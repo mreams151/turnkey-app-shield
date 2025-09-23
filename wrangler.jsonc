@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "turnkey-app-shield",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": "./dist",
+  
+  // D1 Database Configuration for Software Protection System
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "turnkey-software-shield-production",
+      "database_id": "placeholder-will-be-created"
+    }
+  ],
+  
+  // KV Storage for Sessions, Cache, and Rate Limiting  
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "placeholder-kv-id",
+      "preview_id": "placeholder-kv-preview-id"
+    }
+  ],
+  
+  // Environment Variables
+  "vars": {
+    "ENVIRONMENT": "development",
+    "API_VERSION": "v2",
+    "MAX_ACTIVATIONS_PER_MINUTE": "100",
+    "SYSTEM_NAME": "Turnkey Software Shield"
+  }
+}

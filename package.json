@@ -1,0 +1,44 @@
+{
+  "name": "turnkey-software-shield",
+  "version": "2.0.0",
+  "description": "Modern software protection and licensing platform",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:sandbox": "wrangler pages dev dist --d1=turnkey-production --local --ip 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "wrangler pages dev dist",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name turnkey-software-shield",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:migrate:local": "wrangler d1 migrations apply turnkey-production --local",
+    "db:migrate:prod": "wrangler d1 migrations apply turnkey-production",
+    "db:seed": "wrangler d1 execute turnkey-production --local --file=./seed.sql",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
+    "db:console:local": "wrangler d1 execute turnkey-production --local",
+    "backup-data": "node scripts/backup.js",
+    "export-customers": "node scripts/export-customers.js",
+    "test": "curl http://localhost:3000",
+    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
+    "start:pm2": "pm2 start ecosystem.config.cjs"
+  },
+  "dependencies": {
+    "hono": "^4.9.8",
+    "@hono/zod-validator": "^0.3.0",
+    "zod": "^3.22.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "nanoid": "^5.0.0",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250705.0",
+    "@hono/vite-cloudflare-pages": "^0.4.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jsonwebtoken": "^9.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.3.5",
+    "wrangler": "^4.4.0"
+  }
+}

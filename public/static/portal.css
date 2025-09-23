@@ -1,0 +1,257 @@
+/* Customer Portal Styles - Modern Turnkey Software Shield */
+
+/* Portal-specific styling */
+.portal-container {
+    min-height: 100vh;
+    background: #f8fafc;
+}
+
+.portal-card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+}
+
+.portal-stats-card {
+    @apply bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200;
+}
+
+.portal-nav {
+    @apply bg-white shadow-sm border-b border-gray-200;
+}
+
+.portal-button {
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
+}
+
+.portal-button-primary {
+    @apply portal-button bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+}
+
+.portal-button-secondary {
+    @apply portal-button bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
+}
+
+.portal-table {
+    @apply min-w-full divide-y divide-gray-200;
+}
+
+.portal-table thead {
+    @apply bg-gray-50;
+}
+
+.portal-table th {
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+}
+
+.portal-table td {
+    @apply px-6 py-4 whitespace-nowrap text-sm;
+}
+
+.portal-table tbody tr:hover {
+    @apply bg-gray-50;
+}
+
+/* License status badges */
+.license-status {
+    @apply px-2 py-1 text-xs rounded font-medium;
+}
+
+.license-status.active {
+    @apply bg-green-100 text-green-800;
+}
+
+.license-status.expired {
+    @apply bg-red-100 text-red-800;
+}
+
+.license-status.suspended {
+    @apply bg-yellow-100 text-yellow-800;
+}
+
+/* Activity timeline */
+.activity-item {
+    @apply flex items-center p-4 hover:bg-gray-50 transition-colors duration-150;
+}
+
+.activity-icon {
+    @apply w-10 h-10 rounded-full flex items-center justify-center mr-4;
+}
+
+.activity-icon.success {
+    @apply bg-green-100 text-green-600;
+}
+
+.activity-icon.info {
+    @apply bg-blue-100 text-blue-600;
+}
+
+.activity-icon.warning {
+    @apply bg-yellow-100 text-yellow-600;
+}
+
+/* Device management */
+.device-list {
+    @apply space-y-3;
+}
+
+.device-item {
+    @apply bg-gray-50 p-4 rounded-lg border border-gray-200;
+}
+
+.device-item.active {
+    @apply bg-green-50 border-green-200;
+}
+
+.device-name {
+    @apply font-medium text-gray-900;
+}
+
+.device-info {
+    @apply text-sm text-gray-600;
+}
+
+.device-actions {
+    @apply flex space-x-2 mt-2;
+}
+
+/* Download section */
+.download-section {
+    @apply bg-blue-50 border border-blue-200 rounded-lg p-6;
+}
+
+.download-button {
+    @apply portal-button-primary;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .portal-stats-card {
+        @apply p-4;
+    }
+    
+    .portal-table {
+        @apply text-sm;
+    }
+    
+    .portal-table th,
+    .portal-table td {
+        @apply px-3 py-2;
+    }
+    
+    .activity-item {
+        @apply p-3;
+    }
+    
+    .activity-icon {
+        @apply w-8 h-8 mr-3;
+    }
+}
+
+/* Loading states */
+.portal-loading {
+    @apply animate-pulse bg-gray-200 rounded;
+}
+
+.portal-loading-text {
+    @apply h-4 bg-gray-200 rounded mb-2;
+}
+
+.portal-loading-avatar {
+    @apply h-10 w-10 bg-gray-200 rounded-full;
+}
+
+/* Empty states */
+.portal-empty-state {
+    @apply text-center py-12 px-4;
+}
+
+.portal-empty-icon {
+    @apply mx-auto h-16 w-16 text-gray-400 mb-4;
+}
+
+.portal-empty-title {
+    @apply text-lg font-medium text-gray-900 mb-2;
+}
+
+.portal-empty-description {
+    @apply text-gray-600 mb-6;
+}
+
+/* Notification styles */
+.portal-notification {
+    @apply fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 max-w-md transform transition-transform duration-300;
+}
+
+.portal-notification.success {
+    @apply bg-green-500 text-white;
+}
+
+.portal-notification.error {
+    @apply bg-red-500 text-white;
+}
+
+.portal-notification.info {
+    @apply bg-blue-500 text-white;
+}
+
+/* Modal styles for license details */
+.portal-modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 z-40;
+}
+
+.portal-modal {
+    @apply bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6 z-50;
+}
+
+.portal-modal-header {
+    @apply border-b border-gray-200 pb-4 mb-4;
+}
+
+.portal-modal-title {
+    @apply text-lg font-semibold text-gray-900;
+}
+
+.portal-modal-body {
+    @apply space-y-4;
+}
+
+.portal-modal-footer {
+    @apply border-t border-gray-200 pt-4 mt-6 flex justify-end space-x-3;
+}
+
+/* License key display */
+.license-key {
+    @apply font-mono text-lg bg-gray-100 px-3 py-2 rounded border;
+}
+
+.license-key-copy {
+    @apply ml-2 text-gray-500 hover:text-gray-700 cursor-pointer;
+}
+
+/* Progress bars for usage */
+.usage-progress {
+    @apply w-full bg-gray-200 rounded-full h-2;
+}
+
+.usage-progress-bar {
+    @apply h-2 bg-blue-600 rounded-full transition-all duration-300;
+}
+
+.usage-progress.warning .usage-progress-bar {
+    @apply bg-yellow-500;
+}
+
+.usage-progress.danger .usage-progress-bar {
+    @apply bg-red-500;
+}
+
+/* Print styles */
+@media print {
+    .portal-nav,
+    .no-print {
+        display: none !important;
+    }
+    
+    .portal-card {
+        @apply border-2 border-gray-300 mb-4;
+    }
+}
