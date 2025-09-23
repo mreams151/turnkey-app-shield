@@ -569,7 +569,7 @@ export class DatabaseInitializer {
 
     // Add default settings
     const defaultSettings = [
-      { key: 'system_name', value: 'Turnkey Software Shield', description: 'System name' },
+      { key: 'system_name', value: 'TurnkeyAppShield', description: 'System name' },
       { key: 'default_license_duration', value: '365', description: 'Default license duration in days' },
       { key: 'max_devices_per_customer', value: '5', description: 'Default max devices per customer' },
       { key: 'rate_limit_requests', value: '100', description: 'Rate limit requests per hour' },

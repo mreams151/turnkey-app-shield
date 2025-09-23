@@ -73,7 +73,7 @@ app.get('/api/health', async (c) => {
 // System info endpoint
 app.get('/api/info', (c) => {
   return c.json({
-    name: 'Turnkey Software Shield',
+    name: 'TurnkeyAppShield',
     version: '2.0.0',
     description: 'Modern software protection and licensing system',
     features: [
@@ -144,7 +144,7 @@ app.get('/admin', (c) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Turnkey Software Shield - Admin Panel</title>
+        <title>TurnkeyAppShield - Admin Panel</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <link href="/static/admin.css" rel="stylesheet">
@@ -168,7 +168,7 @@ app.get('/admin', (c) => {
                 <div class="text-center">
                     <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-blue mx-auto mb-4"></div>
                     <h2 class="text-xl font-semibold text-gray-900">Loading Admin Panel...</h2>
-                    <p class="text-gray-600 mt-2">Initializing Turnkey Software Shield</p>
+                    <p class="text-gray-600 mt-2">Initializing TurnkeyAppShield</p>
                 </div>
             </div>
         </div>
@@ -189,7 +189,7 @@ app.get('/portal', (c) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Turnkey Software Shield - Customer Portal</title>
+        <title>TurnkeyAppShield - Customer Portal</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <link href="/static/portal.css" rel="stylesheet">
@@ -220,7 +220,7 @@ app.get('/', (c) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Turnkey Software Shield - Modern Software Protection</title>
+        <title>TurnkeyAppShield - Modern Software Protection</title>
         <meta name="description" content="Advanced software protection and licensing system with hardware fingerprinting, real-time validation, and comprehensive security monitoring.">
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
@@ -250,7 +250,7 @@ app.get('/', (c) => {
                     <div class="flex items-center">
                         <div class="flex-shrink-0 flex items-center">
                             <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
-                            <h1 class="text-xl font-bold text-gray-900">Turnkey Software Shield</h1>
+                            <h1 class="text-xl font-bold text-gray-900">TurnkeyAppShield</h1>
                         </div>
                     </div>
                     <div class="flex items-center space-x-4">
@@ -407,10 +407,10 @@ app.get('/', (c) => {
                     <div>
                         <div class="flex items-center mb-4">
                             <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
-                            <h3 class="text-xl font-bold">Turnkey Software Shield</h3>
+                            <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
                         </div>
                         <p class="text-gray-400">
-                            Modern software protection system built for the cloud era. 
+                            TurnkeyAppShield - Modern software protection system built for the cloud era. 
                             Secure, scalable, and reliable.
                         </p>
                     </div>
@@ -437,7 +437,7 @@ app.get('/', (c) => {
                     </div>
                 </div>
                 <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-                    <p>&copy; ${new Date().getFullYear()} Turnkey Software Shield. Built with modern technologies for maximum security and performance.</p>
+                    <p>&copy; ${new Date().getFullYear()} TurnkeyAppShield. Built with modern technologies for maximum security and performance.</p>
                 </div>
             </div>
         </footer>

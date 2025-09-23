@@ -1,7 +1,7 @@
 {
-  "name": "turnkey-software-shield",
+  "name": "turnkey-app-shield",
   "version": "2.0.0",
-  "description": "Modern software protection and licensing platform",
+  "description": "TurnkeyAppShield - Modern software protection and licensing platform",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist",
-    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name turnkey-software-shield",
+    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name turnkey-app-shield",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:local": "wrangler d1 migrations apply turnkey-production --local",
     "db:migrate:prod": "wrangler d1 migrations apply turnkey-production",

@@ -1,4 +1,4 @@
-// Admin Panel JavaScript - Modern Turnkey Software Shield
+// Admin Panel JavaScript - TurnkeyAppShield
 // Comprehensive admin interface for managing customers, products, and system
 
 class AdminPanel {
@@ -50,7 +50,7 @@ class AdminPanel {
                             Admin Panel Access
                         </h2>
                         <p class="mt-2 text-center text-sm text-gray-600">
-                            Turnkey Software Shield Administration
+                            TurnkeyAppShield Administration
                         </p>
                     </div>
                     <form class="mt-8 space-y-6" id="login-form">
@@ -160,7 +160,7 @@ class AdminPanel {
                     <div class="flex justify-between h-16">
                         <div class="flex items-center">
                             <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
-                            <h1 class="text-xl font-bold text-gray-900">Turnkey Software Shield</h1>
+                            <h1 class="text-xl font-bold text-gray-900">TurnkeyAppShield</h1>
                             <span class="ml-2 px-2 py-1 text-xs bg-brand-blue text-white rounded">Admin</span>
                         </div>
                         <div class="flex items-center space-x-4">

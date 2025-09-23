@@ -9,7 +9,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "turnkey-software-shield-production",
+      "database_name": "turnkey-app-shield-production",
       "database_id": "placeholder-will-be-created"
     }
   ],
@@ -28,6 +28,6 @@
     "ENVIRONMENT": "development",
     "API_VERSION": "v2",
     "MAX_ACTIVATIONS_PER_MINUTE": "100",
-    "SYSTEM_NAME": "Turnkey Software Shield"
+    "SYSTEM_NAME": "TurnkeyAppShield"
   }
 }

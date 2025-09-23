@@ -1,4 +1,4 @@
-// Modern Turnkey Software Shield - Database Types
+// TurnkeyAppShield - Database Types
 // Enhanced types for the modernized protection system
 
 export interface Customer {
