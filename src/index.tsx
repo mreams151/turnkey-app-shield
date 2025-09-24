@@ -1,316 +1,218 @@
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { serveStatic } from 'hono/cloudflare-workers'
-import { jwt, sign, verify } from 'hono/jwt'
+// Modern Turnkey Software Shield - Main Application
+// Enhanced web-based software protection system built on Cloudflare Workers
 
-type Bindings = {
-  DB: D1Database
-  KV: KVNamespace
-  JWT_SECRET: string
-  ADMIN_USERNAME: string
-  ADMIN_PASSWORD: string
-  MAX_ACTIVATIONS_PER_LICENSE: string
-  ENVIRONMENT: string
-  API_VERSION: string
-}
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { serveStatic } from 'hono/cloudflare-workers';
+import type { AppContext } from './types/database';
+import { DatabaseManager, DatabaseInitializer } from './utils/database';
 
-const app = new Hono<{ Bindings: Bindings }>()
+// Import route handlers
+import license from './routes/license';
+import admin from './routes/admin';
 
-// CORS middleware for API routes
+const app = new Hono<AppContext>();
+
+// Global middleware
+app.use('*', logger());
 app.use('/api/*', cors({
-  origin: '*',
+  origin: '*', // Configure appropriately for production
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
-}))
+  allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true
+}));
 
-// Serve static files
-app.use('/*', serveStatic({ root: './public' }))
+// Static file routes - development fallback  
+app.get('/static/*', (c) => {
+  const path = c.req.path;
+  
+  if (path.endsWith('.js')) {
+    return c.text('console.log("JS file loaded: ' + path + '");', 200, {
+      'Content-Type': 'application/javascript'
+    });
+  } else if (path.endsWith('.css')) {
+    return c.text('/* CSS file: ' + path + ' */', 200, {
+      'Content-Type': 'text/css' 
+    });
+  }
+  
+  return c.text('File not found', 404);
+});
+
+app.get('/favicon.ico', (c) => {
+  return c.text('', 204);
+});
+
+// API Routes
+app.route('/api/license', license);
+app.route('/api/admin', admin);
 
 // Health check endpoint
-app.get('/api/health', (c) => {
-  return c.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'TurnkeyAppShield',
-    version: c.env.API_VERSION || 'v1'
-  })
-})
-
-// JWT middleware for protected routes
-app.use('/api/admin/*', async (c, next) => {
+app.get('/api/health', async (c) => {
   try {
-    if (!c.env.JWT_SECRET) {
-      return c.json({ error: 'JWT_SECRET not configured' }, 500)
-    }
-    const jwtMiddleware = jwt({ secret: c.env.JWT_SECRET })
-    return jwtMiddleware(c, next)
+    // Test database connection
+    const db = new DatabaseManager(c.env.DB);
+    await db.db.prepare('SELECT 1').first();
+    
+    return c.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: '2.0.0',
+      database: 'connected'
+    });
   } catch (error) {
-    return c.json({ error: 'Unauthorized' }, 401)
+    return c.json({
+      status: 'unhealthy', 
+      timestamp: new Date().toISOString(),
+      error: 'Database connection failed'
+    }, 500);
   }
-})
+});
 
-// Admin login endpoint
-app.post('/api/auth/login', async (c) => {
+// System info endpoint
+app.get('/api/info', (c) => {
+  return c.json({
+    name: 'TurnkeyAppShield',
+    version: '2.0.0',
+    description: 'Modern software protection and licensing system',
+    features: [
+      'Hardware fingerprinting',
+      'AES-256-GCM encryption', 
+      'Real-time license validation',
+      'Advanced security monitoring',
+      'Geo-restriction support',
+      'Rate limiting and DDoS protection',
+      'Comprehensive analytics'
+    ],
+    endpoints: {
+      license_validation: '/api/license/validate',
+      license_creation: '/api/license/create',
+      admin_dashboard: '/api/admin/dashboard',
+      health_check: '/api/health'
+    }
+  });
+});
+
+// Test endpoint for admin authentication
+app.get('/api/test/admin', async (c) => {
   try {
-    if (!c.env.ADMIN_USERNAME || !c.env.ADMIN_PASSWORD || !c.env.JWT_SECRET) {
-      return c.json({ error: 'Authentication not properly configured' }, 500)
-    }
+    const db = new DatabaseManager(c.env.DB);
+    const admin = await db.getAdminByUsername('admin');
     
-    const { username, password } = await c.req.json()
-    
-    if (username === c.env.ADMIN_USERNAME && password === c.env.ADMIN_PASSWORD) {
-      const token = await sign({ 
-        username, 
-        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
-      }, c.env.JWT_SECRET)
-      
-      return c.json({ token, message: 'Login successful' })
-    }
-    
-    return c.json({ error: 'Invalid credentials' }, 401)
+    return c.json({
+      success: true,
+      admin_found: !!admin,
+      admin_username: admin?.username,
+      admin_role: admin?.role,
+      admin_active: admin?.is_active,
+      has_password_hash: !!admin?.password_hash,
+      hash_length: admin?.password_hash?.length || 0
+    });
   } catch (error) {
-    return c.json({ error: 'Login failed' }, 500)
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
-})
+});
 
-// Verify token endpoint
-app.post('/api/auth/verify', async (c) => {
+// Simple dashboard test
+app.get('/api/test/dashboard', async (c) => {
   try {
-    if (!c.env.JWT_SECRET) {
-      return c.json({ valid: false, error: 'JWT_SECRET not configured' }, 500)
-    }
+    const db = new DatabaseManager(c.env.DB);
+    const stats = await db.getDashboardStats();
     
-    const authHeader = c.req.header('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return c.json({ valid: false }, 401)
-    }
-    
-    const token = authHeader.substring(7)
-    await verify(token, c.env.JWT_SECRET)
-    return c.json({ valid: true })
+    return c.json({
+      success: true,
+      stats: stats
+    });
   } catch (error) {
-    return c.json({ valid: false }, 401)
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
-})
+});
 
-// License validation endpoint
-app.post('/api/validate-license', async (c) => {
-  try {
-    const { licenseKey, hardwareId } = await c.req.json()
-    
-    if (!licenseKey || !hardwareId) {
-      return c.json({ 
-        valid: false, 
-        error: 'License key and hardware ID are required' 
-      }, 400)
-    }
+// Admin Panel - Single Page Application
+app.get('/admin', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>TurnkeyAppShield - Admin Panel</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <link href="/static/admin.css" rel="stylesheet">
+        <script>
+          tailwind.config = {
+            theme: {
+              extend: {
+                colors: {
+                  'brand-blue': '#2563eb',
+                  'brand-gray': '#1f2937'
+                }
+              }
+            }
+          }
+        </script>
+    </head>
+    <body class="bg-gray-50 min-h-screen">
+        <div id="admin-app">
+            <!-- Loading state -->
+            <div class="flex items-center justify-center min-h-screen">
+                <div class="text-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-blue mx-auto mb-4"></div>
+                    <h2 class="text-xl font-semibold text-gray-900">Loading Admin Panel...</h2>
+                    <p class="text-gray-600 mt-2">Initializing TurnkeyAppShield</p>
+                </div>
+            </div>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+        <script src="/static/admin.js"></script>
+    </body>
+    </html>
+  `);
+});
 
-    // Check if license exists
-    const license = await c.env.DB.prepare(`
-      SELECT * FROM licenses 
-      WHERE license_key = ? AND (status = 'active' OR status = 'trial')
-    `).bind(licenseKey).first()
+// Customer Portal
+app.get('/portal', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>TurnkeyAppShield - Customer Portal</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <link href="/static/portal.css" rel="stylesheet">
+    </head>
+    <body class="bg-gray-50 min-h-screen">
+        <div id="customer-portal">
+            <!-- Portal content will be loaded here -->
+            <div class="flex items-center justify-center min-h-screen">
+                <div class="text-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <h2 class="text-xl font-semibold text-gray-900">Loading Customer Portal...</h2>
+                </div>
+            </div>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="/static/portal.js"></script>
+    </body>
+    </html>
+  `);
+});
 
-    if (!license) {
-      return c.json({ 
-        valid: false, 
-        error: 'Invalid or inactive license key' 
-      }, 404)
-    }
-
-    // Check expiration
-    const now = new Date()
-    const expiresAt = new Date(license.expires_at)
-    if (now > expiresAt) {
-      // Update license status to expired
-      await c.env.DB.prepare(`
-        UPDATE licenses SET status = 'expired' WHERE license_key = ?
-      `).bind(licenseKey).run()
-      
-      return c.json({ 
-        valid: false, 
-        error: 'License has expired' 
-      }, 403)
-    }
-
-    // Check activation limit
-    const maxActivations = parseInt(c.env.MAX_ACTIVATIONS_PER_LICENSE || '3')
-    const activationCount = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM activations 
-      WHERE license_key = ? AND status = 'active'
-    `).bind(licenseKey).first()
-
-    // Check if this hardware is already activated
-    const existingActivation = await c.env.DB.prepare(`
-      SELECT * FROM activations 
-      WHERE license_key = ? AND hardware_id = ? AND status = 'active'
-    `).bind(licenseKey, hardwareId).first()
-
-    if (existingActivation) {
-      // Update last seen timestamp
-      await c.env.DB.prepare(`
-        UPDATE activations 
-        SET last_seen = CURRENT_TIMESTAMP 
-        WHERE id = ?
-      `).bind(existingActivation.id).run()
-
-      return c.json({ 
-        valid: true, 
-        message: 'License validated successfully',
-        license: {
-          type: license.license_type,
-          expiresAt: license.expires_at,
-          activationsUsed: activationCount.count,
-          maxActivations: maxActivations
-        }
-      })
-    }
-
-    // Check if we can add new activation
-    if (activationCount.count >= maxActivations) {
-      return c.json({ 
-        valid: false, 
-        error: `Maximum activations (${maxActivations}) reached for this license` 
-      }, 403)
-    }
-
-    // Create new activation
-    await c.env.DB.prepare(`
-      INSERT INTO activations (license_key, hardware_id, status, activated_at, last_seen)
-      VALUES (?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).bind(licenseKey, hardwareId).run()
-
-    return c.json({ 
-      valid: true, 
-      message: 'License activated successfully',
-      license: {
-        type: license.license_type,
-        expiresAt: license.expires_at,
-        activationsUsed: activationCount.count + 1,
-        maxActivations: maxActivations
-      }
-    })
-
-  } catch (error) {
-    console.error('License validation error:', error)
-    return c.json({ 
-      valid: false, 
-      error: 'Internal server error during license validation' 
-    }, 500)
-  }
-})
-
-// Admin: Get all licenses
-app.get('/api/admin/licenses', async (c) => {
-  try {
-    const licenses = await c.env.DB.prepare(`
-      SELECT 
-        l.*,
-        COUNT(a.id) as activation_count
-      FROM licenses l
-      LEFT JOIN activations a ON l.license_key = a.license_key AND a.status = 'active'
-      GROUP BY l.id
-      ORDER BY l.created_at DESC
-    `).all()
-
-    return c.json({ licenses: licenses.results })
-  } catch (error) {
-    return c.json({ error: 'Failed to fetch licenses' }, 500)
-  }
-})
-
-// Admin: Create new license
-app.post('/api/admin/licenses', async (c) => {
-  try {
-    const { license_type, duration_days } = await c.req.json()
-    
-    // Generate license key
-    const licenseKey = generateLicenseKey()
-    
-    // Calculate expiration
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + parseInt(duration_days))
-    
-    await c.env.DB.prepare(`
-      INSERT INTO licenses (license_key, license_type, status, expires_at, created_at)
-      VALUES (?, ?, 'active', ?, CURRENT_TIMESTAMP)
-    `).bind(licenseKey, license_type, expiresAt.toISOString()).run()
-
-    return c.json({ 
-      message: 'License created successfully', 
-      licenseKey,
-      expiresAt: expiresAt.toISOString()
-    })
-  } catch (error) {
-    return c.json({ error: 'Failed to create license' }, 500)
-  }
-})
-
-// Admin: Update license status
-app.put('/api/admin/licenses/:key', async (c) => {
-  try {
-    const licenseKey = c.req.param('key')
-    const { status } = await c.req.json()
-    
-    await c.env.DB.prepare(`
-      UPDATE licenses SET status = ? WHERE license_key = ?
-    `).bind(status, licenseKey).run()
-
-    return c.json({ message: 'License updated successfully' })
-  } catch (error) {
-    return c.json({ error: 'Failed to update license' }, 500)
-  }
-})
-
-// Admin: Get activations for a license
-app.get('/api/admin/licenses/:key/activations', async (c) => {
-  try {
-    const licenseKey = c.req.param('key')
-    
-    const activations = await c.env.DB.prepare(`
-      SELECT * FROM activations 
-      WHERE license_key = ? 
-      ORDER BY activated_at DESC
-    `).bind(licenseKey).all()
-
-    return c.json({ activations: activations.results })
-  } catch (error) {
-    return c.json({ error: 'Failed to fetch activations' }, 500)
-  }
-})
-
-// Admin: Deactivate a specific activation
-app.delete('/api/admin/activations/:id', async (c) => {
-  try {
-    const activationId = c.req.param('id')
-    
-    await c.env.DB.prepare(`
-      UPDATE activations SET status = 'revoked' WHERE id = ?
-    `).bind(activationId).run()
-
-    return c.json({ message: 'Activation revoked successfully' })
-  } catch (error) {
-    return c.json({ error: 'Failed to revoke activation' }, 500)
-  }
-})
-
-// Helper function to generate license keys
-function generateLicenseKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  const segments = []
-  
-  for (let i = 0; i < 4; i++) {
-    let segment = ''
-    for (let j = 0; j < 4; j++) {
-      segment += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    segments.push(segment)
-  }
-  
-  return segments.join('-')
-}
-
-// Landing page
+// Main landing page - Modern design showcasing the system
 app.get('/', (c) => {
   return c.html(`
     <!DOCTYPE html>
@@ -319,290 +221,261 @@ app.get('/', (c) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>TurnkeyAppShield - High Level Software Protection</title>
+        <meta name="description" content="Advanced software protection and licensing system with hardware fingerprinting, real-time validation, and comprehensive security monitoring.">
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-        <style>
-            body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-            .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-            .card-hover { transition: transform 0.3s ease, box-shadow 0.3s ease; }
-            .card-hover:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
-        </style>
+        <link href="/static/styles.css" rel="stylesheet">
+        <script>
+          tailwind.config = {
+            theme: {
+              extend: {
+                colors: {
+                  'brand-blue': '#2563eb',
+                  'brand-dark': '#1e293b'
+                },
+                animation: {
+                  'fade-in': 'fadeIn 0.5s ease-in-out',
+                  'slide-up': 'slideUp 0.6s ease-out'
+                }
+              }
+            }
+          }
+        </script>
     </head>
-    <body class="bg-gray-50">
+    <body class="bg-white">
         <!-- Navigation -->
-        <nav class="bg-white shadow-lg fixed w-full z-50">
+        <nav class="bg-white shadow-sm border-b border-gray-200">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center">
-                        <div class="flex-shrink-0">
-                            <h1 class="text-2xl font-bold text-gray-800">TurnkeyAppShield</h1>
+                        <div class="flex-shrink-0 flex items-center">
+                            <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
+                            <h1 class="text-xl font-bold text-gray-900">TurnkeyAppShield</h1>
                         </div>
                     </div>
-                    <div class="flex items-center space-x-8">
-                        <a href="#features" class="text-gray-700 hover:text-blue-600 transition-colors">Features</a>
-                        <a href="#pricing" class="text-gray-700 hover:text-blue-600 transition-colors">Pricing</a>
-                        <a href="#contact" class="text-gray-700 hover:text-blue-600 transition-colors">Contact</a>
+                    <div class="flex items-center space-x-4">
+                        <a href="/portal" class="text-gray-600 hover:text-brand-blue transition-colors">
+                            <i class="fas fa-user mr-2"></i>Customer Portal
+                        </a>
+                        <a href="/admin" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-cog mr-2"></i>Admin Panel
+                        </a>
                     </div>
                 </div>
             </div>
         </nav>
 
         <!-- Hero Section -->
-        <section class="gradient-bg text-white pt-20">
+        <div class="bg-gradient-to-br from-brand-blue to-blue-700 text-white">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
                 <div class="text-center">
-                    <h1 class="text-4xl md:text-6xl font-extrabold mb-6">
+                    <h1 class="text-5xl font-bold mb-6 animate-fade-in">
                         High Level Software Protection
                     </h1>
-                    <p class="text-xl md:text-2xl mb-8 text-blue-100">
-                        Advanced non coding licensing and piracy prevention system that secures your applications with enterprise-grade protection and seamless integration.
+                    <p class="text-xl mb-8 text-blue-100 max-w-3xl mx-auto animate-slide-up">
+                        Advanced non coding licensing and piracy prevention system with hardware fingerprinting, 
+                        real-time validation, and comprehensive security monitoring. Built on 
+                        Cloudflare's global edge network for maximum performance and reliability.
                     </p>
                 </div>
             </div>
-        </section>
+        </div>
 
         <!-- Features Section -->
-        <section id="features" class="py-20 bg-white">
+        <div class="py-24 bg-gray-50">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-16">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-                        Enterprise Grade Security Features
-                    </h2>
-                    <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                        Comprehensive protection suite designed to secure your software against piracy and unauthorized usage.
-                    </p>
+                    <h2 class="text-4xl font-bold text-gray-900 mb-4">Enterprise Grade Security Features</h2>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <!-- Feature 1 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-shield-alt"></i>
+                    <!-- Hardware Fingerprinting -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-blue-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-fingerprint text-2xl text-brand-blue"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">Hardware Fingerprinting</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Hardware Fingerprinting</h3>
                         <p class="text-gray-600">
-                            Advanced hardware fingerprinting technology that uniquely identifies each device for secure license validation.
+                            Advanced device identification using MAC addresses, hardware hashes, 
+                            and system characteristics for secure license binding.
                         </p>
                     </div>
 
-                    <!-- Feature 2 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-key"></i>
+                    <!-- Real-time Validation -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-green-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-check-circle text-2xl text-green-600"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">License Management</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Real-time Validation</h3>
                         <p class="text-gray-600">
-                            Flexible licensing system supporting trial, subscription, and perpetual licenses with activation limits.
+                            Instant license validation with sub-100ms response times powered 
+                            by Cloudflare's global edge network.
                         </p>
                     </div>
 
-                    <!-- Feature 3 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-cloud"></i>
+                    <!-- Advanced Encryption -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-purple-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-lock text-2xl text-purple-600"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">Cloud-Based Validation</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">AES-256-GCM Encryption</h3>
                         <p class="text-gray-600">
-                            Real-time license validation through secure cloud infrastructure with 99.9% uptime guarantee.
+                            Military-grade encryption with authenticated encryption providing 
+                            both confidentiality and integrity protection.
                         </p>
                     </div>
 
-                    <!-- Feature 4 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-code"></i>
+                    <!-- Security Monitoring -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-red-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-shield-alt text-2xl text-red-600"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">Easy Integration</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Security Monitoring</h3>
                         <p class="text-gray-600">
-                            Simple API integration with SDKs for popular programming languages and frameworks.
+                            Comprehensive threat detection with automatic blocking of 
+                            suspicious activities and detailed security event logging.
                         </p>
                     </div>
 
-                    <!-- Feature 5 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-analytics"></i>
+                    <!-- Geo-restrictions -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-yellow-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-globe text-2xl text-yellow-600"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">Analytics Dashboard</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Geographic Control</h3>
                         <p class="text-gray-600">
-                            Comprehensive analytics and reporting to track license usage and prevent unauthorized access.
+                            Flexible geographic restrictions and IP-based access control 
+                            for compliance and regional licensing requirements.
                         </p>
                     </div>
 
-                    <!-- Feature 6 -->
-                    <div class="bg-gray-50 p-8 rounded-xl card-hover">
-                        <div class="text-blue-600 text-4xl mb-4">
-                            <i class="fas fa-lock"></i>
+                    <!-- Analytics Dashboard -->
+                    <div class="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="bg-indigo-100 w-16 h-16 rounded-lg flex items-center justify-center mb-6">
+                            <i class="fas fa-chart-bar text-2xl text-indigo-600"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-4">Anti-Piracy Protection</h3>
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Analytics Dashboard</h3>
                         <p class="text-gray-600">
-                            Advanced anti-piracy measures including code obfuscation and runtime protection mechanisms.
+                            Real-time analytics with comprehensive reporting on license usage, 
+                            security events, and system performance metrics.
                         </p>
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <!-- Pricing Section -->
-        <section id="pricing" class="py-20 bg-gray-50">
+        <!-- Stats Section -->
+        <div class="bg-brand-dark text-white py-16">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center mb-16">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-                        Choose Your Protection Plan
-                    </h2>
-                    <p class="text-xl text-gray-600">
-                        Flexible pricing options to suit businesses of all sizes.
-                    </p>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <!-- Starter Plan -->
-                    <div class="bg-white p-8 rounded-xl shadow-lg card-hover">
-                        <div class="text-center mb-8">
-                            <h3 class="text-2xl font-bold text-gray-800 mb-2">Starter</h3>
-                            <div class="text-4xl font-bold text-blue-600 mb-2">$29</div>
-                            <div class="text-gray-600">per month</div>
-                        </div>
-                        <ul class="space-y-4 mb-8">
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Up to 1,000 activations</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Basic analytics</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Email support</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>API access</span>
-                            </li>
-                        </ul>
-                        <button class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
-                            Get Started
-                        </button>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
+                    <div>
+                        <div class="text-4xl font-bold mb-2" id="stat-response-time">< 100ms</div>
+                        <div class="text-gray-300">Average Response Time</div>
                     </div>
-
-                    <!-- Professional Plan -->
-                    <div class="bg-white p-8 rounded-xl shadow-lg card-hover border-2 border-blue-500 relative">
-                        <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                            <span class="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold">Most Popular</span>
-                        </div>
-                        <div class="text-center mb-8">
-                            <h3 class="text-2xl font-bold text-gray-800 mb-2">Professional</h3>
-                            <div class="text-4xl font-bold text-blue-600 mb-2">$99</div>
-                            <div class="text-gray-600">per month</div>
-                        </div>
-                        <ul class="space-y-4 mb-8">
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Up to 10,000 activations</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Advanced analytics</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Priority support</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Custom integrations</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>White-label options</span>
-                            </li>
-                        </ul>
-                        <button class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
-                            Get Started
-                        </button>
+                    <div>
+                        <div class="text-4xl font-bold mb-2" id="stat-uptime">99.9%</div>
+                        <div class="text-gray-300">System Uptime</div>
                     </div>
-
-                    <!-- Enterprise Plan -->
-                    <div class="bg-white p-8 rounded-xl shadow-lg card-hover">
-                        <div class="text-center mb-8">
-                            <h3 class="text-2xl font-bold text-gray-800 mb-2">Enterprise</h3>
-                            <div class="text-4xl font-bold text-blue-600 mb-2">Custom</div>
-                            <div class="text-gray-600">pricing</div>
-                        </div>
-                        <ul class="space-y-4 mb-8">
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Unlimited activations</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>Custom analytics</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>24/7 dedicated support</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>On-premise deployment</span>
-                            </li>
-                            <li class="flex items-center">
-                                <i class="fas fa-check text-green-500 mr-3"></i>
-                                <span>SLA guarantee</span>
-                            </li>
-                        </ul>
-                        <button class="w-full bg-gray-800 text-white py-3 px-6 rounded-lg hover:bg-gray-900 transition-colors font-semibold">
-                            Contact Sales
-                        </button>
+                    <div>
+                        <div class="text-4xl font-bold mb-2" id="stat-locations">290+</div>
+                        <div class="text-gray-300">Global Edge Locations</div>
+                    </div>
+                    <div>
+                        <div class="text-4xl font-bold mb-2" id="stat-security">100%</div>
+                        <div class="text-gray-300">Security Score</div>
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
 
         <!-- Footer -->
-        <footer id="contact" class="bg-gray-800 text-white py-16">
+        <footer class="bg-gray-900 text-white py-12">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex flex-col items-center text-center space-y-8">
-                    <!-- Company Info -->
-                    <div>
-                        <h3 class="text-2xl font-bold mb-4">TurnkeyAppShield</h3>
-                        <p class="text-gray-300 mb-4">
-                            Protecting software integrity with advanced licensing and anti-piracy solutions.
-                        </p>
-                        <p class="text-gray-300">
-                            Email: support@turnkeyappshield.com<br>
-                            Phone: +1 (555) 123-4567
+                    <div class="text-center">
+                        <div class="flex items-center justify-center mb-4">
+                            <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
+                            <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
+                        </div>
+                        <p class="text-gray-400">
+                            TurnkeyAppShield - Modern software protection system built for the cloud era. 
+                            Secure, scalable, and reliable.
                         </p>
                     </div>
-
-                    <!-- Social Links -->
-                    <div>
-                        <h4 class="text-lg font-semibold mb-4">Follow Us</h4>
-                        <div class="flex space-x-6">
-                            <a href="#" class="text-gray-300 hover:text-white transition-colors text-2xl">
-                                <i class="fab fa-twitter"></i>
-                            </a>
-                            <a href="#" class="text-gray-300 hover:text-white transition-colors text-2xl">
-                                <i class="fab fa-linkedin"></i>
-                            </a>
-                            <a href="#" class="text-gray-300 hover:text-white transition-colors text-2xl">
-                                <i class="fab fa-github"></i>
-                            </a>
+                    <div class="text-center">
+                        <h4 class="text-lg font-semibold mb-4">System Status</h4>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-center">
+                                <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+                                <span class="text-gray-400">All Systems Operational</span>
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                Last updated: <span id="last-updated">${new Date().toLocaleString()}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <div class="border-t border-gray-700 mt-12 pt-8 text-center">
-                    <p class="text-gray-300">
-                        © 2024 TurnkeyAppShield. All rights reserved.
-                    </p>
+                <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+                    <p>&copy; ${new Date().getFullYear()} TurnkeyAppShield. Built with modern technologies for maximum security and performance.</p>
                 </div>
             </div>
         </footer>
+
+        <script src="/static/app.js"></script>
     </body>
     </html>
-  `)
-})
+  `);
+});
 
-export default app
+// Initialize database on first startup (development only)
+app.get('/api/init', async (c) => {
+  try {
+    const initializer = new DatabaseInitializer(c.env.DB);
+    await initializer.initializeDatabase();
+    await initializer.seedInitialData();
+    
+    return c.json({
+      success: true,
+      message: 'Database initialized successfully',
+      note: 'This endpoint should be disabled in production'
+    });
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    return c.json({
+      success: false,
+      message: 'Database initialization failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// 404 handler
+app.notFound((c) => {
+  return c.json({
+    error: 'Not Found',
+    message: 'The requested endpoint does not exist',
+    available_endpoints: {
+      api_info: '/api/info',
+      health_check: '/api/health',
+      admin_panel: '/admin',
+      customer_portal: '/portal'
+    }
+  }, 404);
+});
+
+// Error handler
+app.onError((err, c) => {
+  console.error('Application error:', err);
+  return c.json({
+    error: 'Internal Server Error',
+    message: 'An unexpected error occurred',
+    timestamp: new Date().toISOString()
+  }, 500);
+});
+
+export default app;
+
+  }, 500);
+});
+
+export default app;
