@@ -257,6 +257,9 @@ app.get('/', (c) => {
                         <a href="/portal" class="text-gray-600 hover:text-brand-blue transition-colors">
                             <i class="fas fa-user mr-2"></i>Customer Portal
                         </a>
+                        <a href="/admin" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-cog mr-2"></i>Admin Panel
+                        </a>
                     </div>
                 </div>
             </div>
