@@ -257,9 +257,6 @@ app.get('/', (c) => {
                         <a href="/portal" class="text-gray-600 hover:text-brand-blue transition-colors">
                             <i class="fas fa-user mr-2"></i>Customer Portal
                         </a>
-                        <a href="/admin" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                            <i class="fas fa-cog mr-2"></i>Admin Panel
-                        </a>
                     </div>
                 </div>
             </div>
@@ -267,7 +264,7 @@ app.get('/', (c) => {
 
         <!-- Hero Section -->
         <div class="bg-gradient-to-br from-brand-blue to-blue-700 text-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
                 <div class="text-center">
                     <h1 class="text-5xl font-bold mb-6 animate-fade-in">
                         High Level Software Protection
@@ -398,21 +395,8 @@ app.get('/', (c) => {
                             <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
                         </div>
                         <p class="text-gray-400">
-                            TurnkeyAppShield - Modern software protection system built for the cloud era. 
-                            Secure, scalable, and reliable.
+                            Protecting software integrity with advanced licensing and anti-piracy solutions.
                         </p>
-                    </div>
-                    <div class="text-center">
-                        <h4 class="text-lg font-semibold mb-4">System Status</h4>
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-center">
-                                <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-                                <span class="text-gray-400">All Systems Operational</span>
-                            </div>
-                            <div class="text-sm text-gray-500">
-                                Last updated: <span id="last-updated">${new Date().toLocaleString()}</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
