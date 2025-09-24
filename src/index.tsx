@@ -277,12 +277,7 @@ app.get('/', (c) => {
                         real-time validation, and comprehensive security monitoring. Built on 
                         Cloudflare's global edge network for maximum performance and reliability.
                     </p>
-                    <div class="flex justify-center space-x-4">
-    <a href="/admin" class="bg-white text-brand-blue px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-        <i class="fas fa-rocket mr-2"></i>Admin Panel
-    </a>
-</div>
-
+                    
                 </div>
             </div>
         </div>
