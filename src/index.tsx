@@ -278,13 +278,11 @@ app.get('/', (c) => {
                         Cloudflare's global edge network for maximum performance and reliability.
                     </p>
                     <div class="flex justify-center space-x-4">
-                        <a href="/admin" class="bg-white text-brand-blue px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-                            <i class="fas fa-rocket mr-2"></i>Get Started
-                        </a>
-                        <a href="/api/info" class="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-brand-blue transition-colors">
-                            <i class="fas fa-info-circle mr-2"></i>API Documentation
-                        </a>
-                    </div>
+    <a href="/admin" class="bg-white text-brand-blue px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+        <i class="fas fa-rocket mr-2"></i>Admin Panel
+    </a>
+</div>
+
                 </div>
             </div>
         </div>
