@@ -55,20 +55,18 @@ const adminLoginSchema = z.object({
   password: z.string().min(1, 'Password is required')
 });
 
-// Updated customer schema to match frontend form
+// Updated customer schema - only name and email required
 const customerSchema = z.object({
-  email: z.string().email('Invalid email address'),
   name: z.string().min(1, 'Name is required'),
-  company: z.string().optional(),
-  phone: z.string().optional()
+  email: z.string().email('Invalid email address')
 });
 
-// Updated product schema to match frontend form
+// Updated product schema - added rules field, removed features
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   version: z.string().min(1, 'Version is required'),
   description: z.string().optional(),
-  features: z.any().optional()
+  rules: z.array(z.string()).optional().default([])
 });
 
 /**
@@ -578,17 +576,19 @@ admin.post('/products', authMiddleware, async (c) => {
     const { ModernCrypto } = await import('../utils/security');
     const encryptionKey = ModernCrypto.generateEncryptionKey();
 
-    // Create product with current schema 
+    // Create product with current schema and rules
+    const rulesJson = JSON.stringify(validation.data.rules || []);
     const result = await db.db.prepare(`
       INSERT INTO products (
-        name, version, description, download_url, 
+        name, version, description, download_url, features,
         status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
       validation.data.name,
       validation.data.version,
       validation.data.description || null,
-      'https://example.com/download/' + validation.data.name.toLowerCase().replace(/\s+/g, '-')
+      'https://example.com/download/' + validation.data.name.toLowerCase().replace(/\s+/g, '-'),
+      rulesJson
     ).run();
 
     return c.json({
