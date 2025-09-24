@@ -15,7 +15,14 @@
   ],
   
   // KV Storage for Sessions, Cache, and Rate Limiting  
-   
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "04fe2ec769584fa284bbe384a6bb23e7",
+      "preview_id": "04fe2ec769584fa284bbe384a6bb23e7"
+    }
+  ],
+  
   // Environment Variables
   "vars": {
     "ENVIRONMENT": "development",
