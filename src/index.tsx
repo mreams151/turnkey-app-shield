@@ -401,6 +401,18 @@ app.get('/', (c) => {
                             Protecting software integrity with advanced licensing and anti-piracy solutions.
                         </p>
                     </div>
+                    <div class="text-center">
+                        <h4 class="text-lg font-semibold mb-4">System Status</h4>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-center">
+                                <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+                                <span class="text-gray-400">All Systems Operational</span>
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                Last updated: <span id="last-updated">${new Date().toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
                     <p>&copy; ${new Date().getFullYear()} TurnkeyAppShield. Built with modern technologies for maximum security and performance.</p>
