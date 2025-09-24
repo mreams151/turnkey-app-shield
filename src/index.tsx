@@ -26,9 +26,22 @@ app.use('/api/*', cors({
 // Serve static files
 app.use('/*', serveStatic({ root: './public' }))
 
+// Health check endpoint
+app.get('/api/health', (c) => {
+  return c.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'TurnkeyAppShield',
+    version: c.env.API_VERSION || 'v1'
+  })
+})
+
 // JWT middleware for protected routes
 app.use('/api/admin/*', async (c, next) => {
   try {
+    if (!c.env.JWT_SECRET) {
+      return c.json({ error: 'JWT_SECRET not configured' }, 500)
+    }
     const jwtMiddleware = jwt({ secret: c.env.JWT_SECRET })
     return jwtMiddleware(c, next)
   } catch (error) {
@@ -39,6 +52,10 @@ app.use('/api/admin/*', async (c, next) => {
 // Admin login endpoint
 app.post('/api/auth/login', async (c) => {
   try {
+    if (!c.env.ADMIN_USERNAME || !c.env.ADMIN_PASSWORD || !c.env.JWT_SECRET) {
+      return c.json({ error: 'Authentication not properly configured' }, 500)
+    }
+    
     const { username, password } = await c.req.json()
     
     if (username === c.env.ADMIN_USERNAME && password === c.env.ADMIN_PASSWORD) {
@@ -59,6 +76,10 @@ app.post('/api/auth/login', async (c) => {
 // Verify token endpoint
 app.post('/api/auth/verify', async (c) => {
   try {
+    if (!c.env.JWT_SECRET) {
+      return c.json({ valid: false, error: 'JWT_SECRET not configured' }, 500)
+    }
+    
     const authHeader = c.req.header('Authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return c.json({ valid: false }, 401)
