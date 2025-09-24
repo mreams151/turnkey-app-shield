@@ -474,8 +474,3 @@ app.onError((err, c) => {
 });
 
 export default app;
-
-  }, 500);
-});
-
-export default app;
