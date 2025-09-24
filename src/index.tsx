@@ -267,7 +267,7 @@ app.get('/', (c) => {
 
         <!-- Hero Section -->
         <div class="bg-gradient-to-br from-brand-blue to-blue-700 text-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-18">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-22">
                 <div class="text-center">
                     <h1 class="text-5xl font-bold mb-6 animate-fade-in">
                         High Level Software Protection
@@ -394,16 +394,17 @@ app.get('/', (c) => {
         <footer class="bg-gray-900 text-white py-12">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div>
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
-                            <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
-                        </div>
-                        <p class="text-gray-400">
-                            TurnkeyAppShield - Modern software protection system built for the cloud era. 
-                            Secure, scalable, and reliable.
-                        </p>
-                    </div>
+                    <div class="text-center">
+    <div class="flex items-center justify-center mb-4">
+        <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
+        <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
+    </div>
+    <p class="text-gray-400">
+        TurnkeyAppShield - Modern software protection system built for the cloud era. 
+        Secure, scalable, and reliable.
+    </p>
+</div>
+
                                         <div>
                         <h4 class="text-lg font-semibold mb-4">System Status</h4>
                         <div class="space-y-2">
