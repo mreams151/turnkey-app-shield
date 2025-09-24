@@ -267,7 +267,7 @@ app.get('/', (c) => {
 
         <!-- Hero Section -->
         <div class="bg-gradient-to-br from-brand-blue to-blue-700 text-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-22">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
                 <div class="text-center">
                     <h1 class="text-5xl font-bold mb-6 animate-fade-in">
                         High Level Software Protection
@@ -277,7 +277,6 @@ app.get('/', (c) => {
                         real-time validation, and comprehensive security monitoring. Built on 
                         Cloudflare's global edge network for maximum performance and reliability.
                     </p>
-                    
                 </div>
             </div>
         </div>
@@ -287,7 +286,6 @@ app.get('/', (c) => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-16">
                     <h2 class="text-4xl font-bold text-gray-900 mb-4">Enterprise Grade Security Features</h2>
-                   
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -393,22 +391,21 @@ app.get('/', (c) => {
         <!-- Footer -->
         <footer class="bg-gray-900 text-white py-12">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="flex flex-col items-center text-center space-y-8">
                     <div class="text-center">
-    <div class="flex items-center justify-center mb-4">
-        <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
-        <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
-    </div>
-    <p class="text-gray-400">
-        TurnkeyAppShield - Modern software protection system built for the cloud era. 
-        Secure, scalable, and reliable.
-    </p>
-</div>
-
-                                        <div>
+                        <div class="flex items-center justify-center mb-4">
+                            <i class="fas fa-shield-alt text-2xl text-brand-blue mr-3"></i>
+                            <h3 class="text-xl font-bold">TurnkeyAppShield</h3>
+                        </div>
+                        <p class="text-gray-400">
+                            TurnkeyAppShield - Modern software protection system built for the cloud era. 
+                            Secure, scalable, and reliable.
+                        </p>
+                    </div>
+                    <div class="text-center">
                         <h4 class="text-lg font-semibold mb-4">System Status</h4>
                         <div class="space-y-2">
-                            <div class="flex items-center">
+                            <div class="flex items-center justify-center">
                                 <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
                                 <span class="text-gray-400">All Systems Operational</span>
                             </div>
@@ -473,6 +470,11 @@ app.onError((err, c) => {
     error: 'Internal Server Error',
     message: 'An unexpected error occurred',
     timestamp: new Date().toISOString()
+  }, 500);
+});
+
+export default app;
+
   }, 500);
 });
 
