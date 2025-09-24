@@ -293,10 +293,8 @@ app.get('/', (c) => {
         <div class="py-24 bg-gray-50">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-16">
-                    <h2 class="text-4xl font-bold text-gray-900 mb-4">Powerful Protection Features</h2>
-                    <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                        Enterprise Grade Security Features
-                    </p>
+                    <h2 class="text-4xl font-bold text-gray-900 mb-4">Enterprise Grade Security Features</h2>
+                   
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
