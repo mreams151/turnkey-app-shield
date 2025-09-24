@@ -270,10 +270,10 @@ app.get('/', (c) => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div class="text-center">
                     <h1 class="text-5xl font-bold mb-6 animate-fade-in">
-                        Modern Software Protection
+                        High Level Software Protection
                     </h1>
                     <p class="text-xl mb-8 text-blue-100 max-w-3xl mx-auto animate-slide-up">
-                        Advanced licensing and protection system with hardware fingerprinting, 
+                        Advanced non coding licensing and piracy prevention system with hardware fingerprinting, 
                         real-time validation, and comprehensive security monitoring. Built on 
                         Cloudflare's global edge network for maximum performance and reliability.
                     </p>
@@ -295,8 +295,7 @@ app.get('/', (c) => {
                 <div class="text-center mb-16">
                     <h2 class="text-4xl font-bold text-gray-900 mb-4">Powerful Protection Features</h2>
                     <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                        Enterprise-grade security features designed to protect your software 
-                        from piracy and unauthorized use.
+                        Enterprise Grade Security Features
                     </p>
                 </div>
 
