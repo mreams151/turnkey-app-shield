@@ -267,7 +267,7 @@ app.get('/', (c) => {
 
         <!-- Hero Section -->
         <div class="bg-gradient-to-br from-brand-blue to-blue-700 text-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-18">
                 <div class="text-center">
                     <h1 class="text-5xl font-bold mb-6 animate-fade-in">
                         High Level Software Protection
@@ -404,16 +404,7 @@ app.get('/', (c) => {
                             Secure, scalable, and reliable.
                         </p>
                     </div>
-                    <div>
-                        <h4 class="text-lg font-semibold mb-4">Quick Links</h4>
-                        <ul class="space-y-2">
-                            <li><a href="/admin" class="text-gray-400 hover:text-white transition-colors">Admin Panel</a></li>
-                            <li><a href="/portal" class="text-gray-400 hover:text-white transition-colors">Customer Portal</a></li>
-                            <li><a href="/api/info" class="text-gray-400 hover:text-white transition-colors">API Documentation</a></li>
-                            <li><a href="/api/health" class="text-gray-400 hover:text-white transition-colors">System Status</a></li>
-                        </ul>
-                    </div>
-                    <div>
+                                        <div>
                         <h4 class="text-lg font-semibold mb-4">System Status</h4>
                         <div class="space-y-2">
                             <div class="flex items-center">
