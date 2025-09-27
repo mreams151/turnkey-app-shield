@@ -32,6 +32,15 @@ class AdminPanel {
             const response = await axios.get(`${this.apiBaseUrl}/admin/dashboard`, {
                 headers: { Authorization: `Bearer ${this.token}` }
             });
+            
+            // Set current user info from dashboard response if available
+            if (response.status === 200 && response.data.success && response.data.admin) {
+                this.currentUser = response.data.admin;
+            } else if (response.status === 200 && !this.currentUser) {
+                // Fallback: set a default admin user if not provided
+                this.currentUser = { username: 'admin', role: 'super_admin' };
+            }
+            
             return response.status === 200;
         } catch (error) {
             return false;

@@ -214,7 +214,11 @@ admin.get('/dashboard', authMiddleware, async (c) => {
       }
     };
 
-    return c.json(dashboardData);
+    return c.json({
+      success: true,
+      data: dashboardData,
+      admin: c.get('admin_user') // Include admin user info from auth middleware
+    });
 
   } catch (error) {
     console.error('Dashboard error:', error);
