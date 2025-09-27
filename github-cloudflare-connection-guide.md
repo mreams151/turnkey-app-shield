@@ -285,10 +285,11 @@ module.exports = {
 - **API Info**: `http://localhost:3000/api/info`
 
 ### Production URLs (Cloudflare):
-- **Homepage**: `https://turnkey-app-shield.pages.dev`
-- **Admin Panel**: `https://turnkey-app-shield.pages.dev/admin`  
-- **Customer Portal**: `https://turnkey-app-shield.pages.dev/portal`
-- **API Health**: `https://turnkey-app-shield.pages.dev/api/health`
+- **Homepage**: `https://a29d7ed8.turnkey-app-shield.pages.dev`
+- **Admin Panel**: `https://a29d7ed8.turnkey-app-shield.pages.dev/admin`  
+- **Customer Portal**: `https://a29d7ed8.turnkey-app-shield.pages.dev/portal`
+- **API Health**: `https://a29d7ed8.turnkey-app-shield.pages.dev/api/health`
+- **Direct Cloudflare URL**: `https://turnkey-app-shield.pages.dev` (also works)
 
 ### Key API Endpoints:
 ```
@@ -410,9 +411,21 @@ npm run deploy:prod
 
 ---
 
-**Document Created**: September 24, 2025  
+**Document Updated**: September 27, 2025  
 **For Project**: TurnkeyAppShield v2.0  
 **GitHub**: https://github.com/mreams151/turnkey-app-shield  
-**Cloudflare**: turnkey-app-shield.pages.dev  
+**Cloudflare Production**: https://a29d7ed8.turnkey-app-shield.pages.dev
+
+## 🚀 MAJOR UPDATE (September 27, 2025): Rule Template System Fully Operational
+
+**CRITICAL FIX**: Rule templates were previously just UI placeholders. Now they enforce real restrictions during license validation:
+
+✅ **Device Limits** - Real device count validation from activation_logs table  
+✅ **Geographic Restrictions** - IP geolocation with country whitelist enforcement  
+✅ **Concurrent Sessions** - Real-time session tracking and limits  
+✅ **Time Restrictions** - Business hours and timezone validation  
+✅ **Admin Panel** - Full CRUD operations working with proper form handling  
+
+**Current Production URL**: https://a29d7ed8.turnkey-app-shield.pages.dev  
 
 *This guide provides all necessary information for an AI assistant to connect to and work with your TurnkeyAppShield project in a new conversation session.*
