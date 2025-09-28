@@ -3,7 +3,7 @@
 
 class AdminPanel {
     constructor() {
-        this.apiBaseUrl = window.location.origin + '/api';
+        this.apiBaseUrl = window.location.origin;
         this.currentUser = null;
         this.token = localStorage.getItem('admin_token');
         this.charts = {};
