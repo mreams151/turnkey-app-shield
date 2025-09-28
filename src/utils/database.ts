@@ -401,6 +401,7 @@ export class DatabaseManager {
       const [
         customerStats,
         licenseStats,
+        productStats,
         activationStats,
         securityStats
       ] = await Promise.all([
@@ -414,15 +415,25 @@ export class DatabaseManager {
           WHERE status != 'revoked'
         `).first().catch(() => ({ total_customers: 0, active_customers: 0, new_customers_30d: 0 })),
         
-        // License statistics - count products as licenses (match products tab filtering)
+        // License statistics - count actual licenses from licenses table
         this.db.prepare(`
           SELECT 
-            COUNT(CASE WHEN status = 'active' THEN 1 END) as total_licenses,
+            COUNT(*) as total_licenses,
             COUNT(CASE WHEN status = 'active' THEN 1 END) as active_licenses,
-            COUNT(CASE WHEN status = 'deprecated' THEN 1 END) as expired_licenses,
+            COUNT(CASE WHEN status = 'expired' THEN 1 END) as expired_licenses,
             COUNT(CASE WHEN created_at >= date('now', '-30 days') AND status = 'active' THEN 1 END) as new_licenses_30d
-          FROM products
+          FROM licenses
         `).first().catch(() => ({ total_licenses: 0, active_licenses: 0, expired_licenses: 0, new_licenses_30d: 0 })),
+        
+        // Product statistics - separate from licenses
+        this.db.prepare(`
+          SELECT 
+            COUNT(*) as total_products,
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_products,
+            COUNT(CASE WHEN status = 'deprecated' THEN 1 END) as deprecated_products,
+            COUNT(CASE WHEN created_at >= date('now', '-30 days') AND status = 'active' THEN 1 END) as new_products_30d
+          FROM products
+        `).first().catch(() => ({ total_products: 0, active_products: 0, deprecated_products: 0, new_products_30d: 0 })),
         
         // Activation statistics - actual data from activation_logs
         this.db.prepare(`
@@ -447,6 +458,7 @@ export class DatabaseManager {
       return {
         customers: customerStats,
         licenses: licenseStats,
+        products: productStats,
         activations: activationStats,
         security: securityStats
       };
@@ -456,6 +468,7 @@ export class DatabaseManager {
       return {
         customers: { total_customers: 0, active_customers: 0, new_customers_30d: 0 },
         licenses: { total_licenses: 0, active_licenses: 0, expired_licenses: 0, new_licenses_30d: 0 },
+        products: { total_products: 0, active_products: 0, deprecated_products: 0, new_products_30d: 0 },
         activations: { total_validations_today: 0, successful_validations_today: 0, failed_validations_today: 0 },
         security: { security_events_today: 0, high_severity_today: 0 }
       };

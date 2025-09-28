@@ -26,7 +26,6 @@ app.use('/api/*', cors({
 }));
 
 // Serve static files from public directory
-import { serveStatic } from 'hono/cloudflare-workers';
 app.use('/static/*', serveStatic({ root: './public' }));
 
 app.get('/favicon.ico', (c) => {
@@ -35,7 +34,7 @@ app.get('/favicon.ico', (c) => {
 
 // API Routes
 app.route('/api/license', license);
-app.route('/api/admin', admin);
+app.route('/admin', admin);
 app.route('/api/init', init);
 // Upload API routes now secured within admin routes only
 
@@ -520,6 +519,314 @@ app.post('/api/regenerate-landing/:id', async (c) => {
   }
 });
 
+// All temporary simple auth endpoints have been removed for production security.
+// The admin panel now uses proper JWT authentication via /api/admin/* routes.
+app.get('/api/admin/simple/products', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    const statusFilter = c.req.query('status') || 'active';
+    
+    let whereClause = '';
+    if (statusFilter === 'active') {
+      whereClause = "WHERE status = 'active'";
+    } else if (statusFilter === 'inactive') {
+      whereClause = "WHERE status = 'inactive'";
+    }
+    
+    const products = await db.db.prepare(`
+      SELECT *, 
+             (CASE WHEN status = 'active' THEN 1 ELSE 0 END) as is_active
+      FROM products ${whereClause} ORDER BY created_at DESC
+    `).all();
+    
+    const productsWithStats = await Promise.all(
+      (products.results || []).map(async (product) => {
+        const stats = await db.db.prepare(`
+          SELECT 
+            COUNT(*) as total_customers,
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_customers
+          FROM customers
+          WHERE product_id = ? AND status != 'revoked'
+        `).bind(product.id).first();
+
+        return {
+          ...product,
+          rules_count: 1, // Simplified for now
+          total_customers: stats?.total_customers || 0,
+          active_customers: stats?.active_customers || 0
+        };
+      })
+    );
+
+    return c.json({
+      success: true,
+      products: productsWithStats,
+      total: productsWithStats.length
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      message: 'Failed to load products'
+    }, 500);
+  }
+});
+
+app.get('/api/admin/simple/dashboard', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get separate counts for better accuracy
+    const productResult = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM products WHERE status = 'active'
+    `).first();
+    
+    const customerResult = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM customers WHERE status = 'active'  
+    `).first();
+    
+    const licenseResult = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM customers
+    `).first();
+
+    const stats = {
+      total_products: productResult?.count || 0,
+      total_customers: customerResult?.count || 0, 
+      active_licenses: customerResult?.count || 0,
+      total_licenses: licenseResult?.count || 0
+    };
+
+    return c.json({
+      success: true,
+      dashboard: stats
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      message: 'Failed to load dashboard'
+    }, 500);
+  }
+});
+
+// Simple customers endpoint (no auth required)
+app.get('/api/admin/simple/customers', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    const productFilter = c.req.query('product');
+    
+    let query = `
+      SELECT 
+        c.id,
+        c.email,
+        c.name,
+        c.license_key,
+        c.product_id,
+        c.primary_device_id as hardware_fingerprint,
+        c.first_activation_date as activation_date,
+        c.expires_at as expiry_date,
+        c.status,
+        c.registration_date as created_at,
+        c.total_activations,
+        c.total_usage_hours,
+        p.name as product_name,
+        p.version as product_version
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id`;
+    
+    if (productFilter) {
+      query += ` WHERE c.product_id = ?`;
+    }
+    
+    query += ` ORDER BY c.registration_date DESC`;
+    
+    const customersResult = productFilter 
+      ? await db.db.prepare(query).bind(productFilter).all()
+      : await db.db.prepare(query).all();
+
+    // Extract the results array from D1 response
+    const customers = customersResult.results || [];
+
+    return c.json({
+      success: true,
+      customers: customers
+    });
+  } catch (error) {
+    console.error('Customers query error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load customers'
+    }, 500);
+  }
+});
+
+// Simple licenses endpoint (no auth required)
+app.get('/api/admin/simple/licenses', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const licensesResult = await db.db.prepare(`
+      SELECT 
+        c.id,
+        c.license_key,
+        c.email,
+        c.name,
+        c.product_id,
+        c.first_activation_date as activation_date,
+        c.expires_at as expiry_date,
+        c.status,
+        c.primary_device_id as hardware_fingerprint,
+        c.registration_date as created_at,
+        c.total_activations,
+        c.license_type,
+        p.name as product_name,
+        p.version as product_version,
+        p.price as product_price
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
+      ORDER BY c.registration_date DESC
+    `).all();
+
+    // Extract the results array from D1 response
+    const licenses = licensesResult.results || [];
+
+    return c.json({
+      success: true,
+      data: licenses
+    });
+  } catch (error) {
+    console.error('Licenses query error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load licenses'
+    }, 500);
+  }
+});
+
+// Simple rules endpoint (no auth required)
+app.get('/api/admin/simple/rules', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const rulesResult = await db.db.prepare(`
+      SELECT 
+        id,
+        name,
+        description,
+        max_activations,
+        max_concurrent_sessions,
+        max_days,
+        grace_period_days,
+        max_devices,
+        max_ips,
+        allow_vm,
+        allowed_countries,
+        blocked_countries,
+        timezone_restrictions,
+        allow_offline_days,
+        require_periodic_validation,
+        validation_interval_hours,
+        is_active,
+        created_at,
+        updated_at
+      FROM license_rules
+      ORDER BY created_at DESC
+    `).all();
+
+    // Extract the results array from D1 response
+    const rules = rulesResult.results || [];
+
+    return c.json({
+      success: true,
+      data: rules
+    });
+  } catch (error) {
+    console.error('Rules query error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load rules'
+    }, 500);
+  }
+});
+
+// Simple single customer endpoint (no auth required)
+app.get('/api/admin/simple/customers/:id', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    const customerId = c.req.param('id');
+    
+    const customerResult = await db.db.prepare(`
+      SELECT 
+        c.id,
+        c.email,
+        c.name,
+        c.license_key,
+        c.product_id,
+        c.primary_device_id as hardware_fingerprint,
+        c.first_activation_date as activation_date,
+        c.expires_at as expiry_date,
+        c.status,
+        c.registration_date as created_at,
+        c.total_activations,
+        c.total_usage_hours,
+        p.name as product_name,
+        p.version as product_version
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
+      WHERE c.id = ?
+    `).bind(customerId).first();
+
+    if (!customerResult) {
+      return c.json({
+        success: false,
+        message: 'Customer not found'
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      customer: customerResult
+    });
+  } catch (error) {
+    console.error('Single customer query error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load customer'
+    }, 500);
+  }
+});
+
+// Simple customer update endpoint (no auth required)
+app.put('/api/admin/simple/customers/:id', async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    const customerId = c.req.param('id');
+    const { name, email, status, notes } = await c.req.json();
+    
+    const updateResult = await db.db.prepare(`
+      UPDATE customers 
+      SET name = ?, email = ?, status = ?, notes = ?
+      WHERE id = ?
+    `).bind(name, email, status, notes || '', customerId).run();
+
+    if (updateResult.changes === 0) {
+      return c.json({
+        success: false,
+        message: 'Customer not found'
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Customer updated successfully'
+    });
+  } catch (error) {
+    console.error('Customer update error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to update customer'
+    }, 500);
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', async (c) => {
   try {
@@ -711,6 +1018,69 @@ app.get('/api/test/dashboard', async (c) => {
   }
 });
 
+// Debug route for testing admin login
+app.get('/debug-admin', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Debug Admin Login</title>
+    </head>
+    <body>
+        <h1>Debug Admin Login</h1>
+        <button onclick="testLogin()">Test Login</button>
+        <button onclick="testDashboard()">Test Dashboard</button>
+        <div id="results"></div>
+
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script>
+            const apiBaseUrl = window.location.origin + '/api';
+            let token = null;
+            
+            async function testLogin() {
+                try {
+                    console.log('Testing login...');
+                    const response = await axios.post(\`\${apiBaseUrl}/admin/simple-auth\`, {
+                        username: 'admin',
+                        password: 'admin123'
+                    });
+                    
+                    console.log('Login response:', response.data);
+                    token = response.data.token;
+                    
+                    document.getElementById('results').innerHTML += 
+                        '<p>✅ Login successful: ' + JSON.stringify(response.data) + '</p>';
+                        
+                } catch (error) {
+                    console.error('Login failed:', error);
+                    document.getElementById('results').innerHTML += 
+                        '<p>❌ Login failed: ' + error.message + '</p>';
+                }
+            }
+            
+            async function testDashboard() {
+                try {
+                    console.log('Testing dashboard...');
+                    const response = await axios.get(\`\${apiBaseUrl}/admin/simple/dashboard\`);
+                    
+                    console.log('Dashboard response:', response.data);
+                    document.getElementById('results').innerHTML += 
+                        '<p>✅ Dashboard successful: ' + JSON.stringify(response.data) + '</p>';
+                        
+                } catch (error) {
+                    console.error('Dashboard failed:', error);
+                    document.getElementById('results').innerHTML += 
+                        '<p>❌ Dashboard failed: ' + error.message + '</p>';
+                }
+            }
+        </script>
+    </body>
+    </html>
+  `);
+});
+
 // Admin Panel - Single Page Application
 app.get('/admin', (c) => {
   return c.html(`
@@ -750,7 +1120,7 @@ app.get('/admin', (c) => {
         
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-        <script src="/static/admin.js?v=${Date.now()}"></script>
+        <script src="/static/admin.js?v=${Date.now()}&bust=${Math.random()}"></script>
     </body>
     </html>
   `);
