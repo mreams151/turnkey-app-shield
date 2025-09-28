@@ -169,26 +169,13 @@ app.get('/register', async (c) => {
                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                       </div>
 
-                      <div>
-                          <label class="block text-sm font-medium text-gray-700 mb-2">Company/Organization</label>
-                          <input type="text" id="company" 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      </div>
-
-                      <div>
-                          <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                          <input type="tel" id="phone" 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      </div>
-
                       <div class="bg-yellow-50 p-4 rounded-lg">
                           <div class="flex items-start">
                               <i class="fas fa-info-circle text-yellow-600 mt-1 mr-3"></i>
                               <div>
                                   <h4 class="font-semibold text-yellow-900">Hardware Fingerprinting</h4>
                                   <p class="text-yellow-800 text-sm mt-1">
-                                      We collect hardware information to ensure your license is used only on authorized devices. 
-                                      This helps protect against software piracy and ensures license compliance.
+                                      We collect hardware information to ensure your license is used only on the device it is being registered on. If you are using a device to fill out this form that will not be using the product, switch to the device that will be using the product and use it to register this form. This helps protect against software piracy and ensures license compliance.
                                   </p>
                               </div>
                           </div>
@@ -234,6 +221,15 @@ app.get('/register', async (c) => {
                   const registerBtn = document.getElementById('registerBtn');
                   const errorDiv = document.getElementById('registrationError');
                   
+                  // Validate email format
+                  const email = document.getElementById('email').value;
+                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                  if (!emailPattern.test(email)) {
+                      errorDiv.textContent = 'Please enter a valid email address.';
+                      errorDiv.classList.remove('hidden');
+                      return;
+                  }
+                  
                   registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registering...';
                   registerBtn.disabled = true;
                   errorDiv.classList.add('hidden');
@@ -247,8 +243,6 @@ app.get('/register', async (c) => {
                               first_name: document.getElementById('firstName').value,
                               last_name: document.getElementById('lastName').value,
                               email: document.getElementById('email').value,
-                              company: document.getElementById('company').value,
-                              phone: document.getElementById('phone').value,
                               hardware_fingerprint: collectHardwareFingerprint()
                           })
                       });
@@ -256,23 +250,11 @@ app.get('/register', async (c) => {
                       const result = await response.json();
                       
                       if (result.success) {
-                          // Show success page
-                          document.body.innerHTML = \`
-                              <div class="min-h-screen bg-gray-50 flex items-center justify-center">
-                                  <div class="max-w-md mx-auto text-center bg-white p-8 rounded-lg shadow-lg">
-                                      <i class="fas fa-check-circle text-5xl text-green-600 mb-4"></i>
-                                      <h1 class="text-2xl font-bold text-gray-900 mb-4">Registration Complete!</h1>
-                                      <p class="text-gray-600 mb-6">
-                                          Thank you for registering ${productInfo.name}. 
-                                          Your license key and download instructions have been sent to your email.
-                                      </p>
-                                      <div class="bg-gray-100 p-4 rounded-lg">
-                                          <p class="text-sm text-gray-700"><strong>License Key:</strong></p>
-                                          <code class="text-lg font-mono text-blue-600">\${result.license_key}</code>
-                                      </div>
-                                  </div>
-                              </div>
-                          \`;
+                          // Redirect to download page with license key and download URL
+                          const downloadUrl = '/download?key=' + encodeURIComponent(result.license_key) + 
+                                            '&product=' + encodeURIComponent(result.product_id) + 
+                                            '&email=' + encodeURIComponent(email);
+                          window.location.href = downloadUrl;
                       } else {
                           throw new Error(result.message || 'Registration failed');
                       }
@@ -297,6 +279,179 @@ app.get('/register', async (c) => {
       <body>
           <h1>System Error</h1>
           <p>Unable to load registration page. Please try again later.</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
+// Download page after successful registration
+app.get('/download', async (c) => {
+  const licenseKey = c.req.query('key');
+  const productId = c.req.query('product');
+  const email = c.req.query('email');
+  
+  if (!licenseKey || !productId) {
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Download Error - TurnkeyAppShield</title></head>
+      <body>
+          <h1>Invalid Download Link</h1>
+          <p>This download link is invalid or expired.</p>
+      </body>
+      </html>
+    `);
+  }
+  
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get product and customer information
+    const customer = await db.db.prepare(`
+      SELECT c.*, p.name as product_name, p.version, p.download_url, p.description
+      FROM customers c
+      JOIN products p ON c.product_id = p.id
+      WHERE c.license_key = ? AND c.product_id = ? AND c.status = 'active'
+    `).bind(licenseKey, parseInt(productId)).first();
+    
+    if (!customer) {
+      return c.html(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Download Error - TurnkeyAppShield</title></head>
+        <body>
+            <h1>License Not Found</h1>
+            <p>Invalid license key or the license may be revoked.</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    return c.html(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Download ${customer.product_name} - TurnkeyAppShield</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+      </head>
+      <body class="bg-gray-50">
+          <!-- Navigation -->
+          <nav class="bg-white shadow-sm border-b border-gray-200">
+              <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div class="flex justify-between h-16">
+                      <div class="flex items-center">
+                          <div class="flex-shrink-0 flex items-center">
+                              <i class="fas fa-shield-alt text-2xl text-blue-600 mr-3"></i>
+                              <h1 class="text-xl font-bold text-gray-900">TurnkeyAppShield</h1>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </nav>
+
+          <div class="max-w-4xl mx-auto px-4 py-12">
+              <div class="bg-white rounded-lg shadow-lg p-8">
+                  <div class="text-center mb-8">
+                      <i class="fas fa-check-circle text-5xl text-green-600 mb-4"></i>
+                      <h1 class="text-3xl font-bold text-gray-900 mb-2">Registration Complete!</h1>
+                      <p class="text-gray-600">Your software is ready for download</p>
+                  </div>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      <!-- Product Information -->
+                      <div class="space-y-6">
+                          <div class="bg-blue-50 p-6 rounded-lg">
+                              <h3 class="text-xl font-bold text-blue-900 mb-4">Product Details</h3>
+                              <div class="space-y-3">
+                                  <p class="text-blue-800"><strong>Name:</strong> ${customer.product_name}</p>
+                                  <p class="text-blue-800"><strong>Version:</strong> ${customer.version}</p>
+                                  ${customer.description ? `<p class="text-blue-800"><strong>Description:</strong> ${customer.description}</p>` : ''}
+                              </div>
+                          </div>
+
+                          <div class="bg-green-50 p-6 rounded-lg">
+                              <h3 class="text-xl font-bold text-green-900 mb-4">Registration Info</h3>
+                              <div class="space-y-3">
+                                  <p class="text-green-800"><strong>Name:</strong> ${customer.first_name} ${customer.last_name}</p>
+                                  <p class="text-green-800"><strong>Email:</strong> ${customer.email}</p>
+                                  <p class="text-green-800"><strong>Registration Date:</strong> ${new Date(customer.created_at).toLocaleDateString()}</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      <!-- Download Section -->
+                      <div class="space-y-6">
+                          <div class="bg-gray-50 p-6 rounded-lg">
+                              <h3 class="text-xl font-bold text-gray-900 mb-4">Your License Key</h3>
+                              <div class="bg-white p-4 rounded-lg border-2 border-gray-200">
+                                  <code class="text-2xl font-mono text-blue-600 break-all">${licenseKey}</code>
+                              </div>
+                              <button onclick="copyLicenseKey()" class="mt-3 text-sm text-blue-600 hover:text-blue-800">
+                                  <i class="fas fa-copy mr-1"></i> Copy License Key
+                              </button>
+                          </div>
+
+                          <div class="text-center">
+                              <a href="${customer.download_url}" 
+                                 class="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors">
+                                  <i class="fas fa-download mr-2"></i>
+                                  Download ${customer.product_name}
+                              </a>
+                          </div>
+
+                          <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                              <div class="flex items-start">
+                                  <i class="fas fa-info-circle text-yellow-600 mt-1 mr-3"></i>
+                                  <div>
+                                      <h4 class="font-semibold text-yellow-900">Important Notes</h4>
+                                      <ul class="text-yellow-800 text-sm mt-2 space-y-1">
+                                          <li>• Your license key has been emailed to you</li>
+                                          <li>• This license is tied to this device's hardware</li>
+                                          <li>• Keep your license key safe for future reference</li>
+                                          <li>• Contact support if you need to transfer to another device</li>
+                                      </ul>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <script>
+              function copyLicenseKey() {
+                  const licenseKey = '${licenseKey}';
+                  navigator.clipboard.writeText(licenseKey).then(function() {
+                      // Show temporary success message
+                      const button = event.target.closest('button');
+                      const originalText = button.innerHTML;
+                      button.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
+                      button.classList.add('text-green-600');
+                      
+                      setTimeout(function() {
+                          button.innerHTML = originalText;
+                          button.classList.remove('text-green-600');
+                      }, 2000);
+                  });
+              }
+          </script>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('Download page error:', error);
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Error - TurnkeyAppShield</title></head>
+      <body>
+          <h1>System Error</h1>
+          <p>Unable to load download page. Please try again later.</p>
       </body>
       </html>
     `);
@@ -372,23 +527,25 @@ app.post('/api/register', async (c) => {
     const result = await db.db.prepare(`
       INSERT INTO customers (
         product_id, email, first_name, last_name, 
-        company, phone, license_key, hardware_fingerprint,
+        license_key, hardware_fingerprint,
         status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
       body.product_id,
       body.email,
       body.first_name,
       body.last_name,
-      body.company || null,
-      body.phone || null,
       licenseKey,
       body.hardware_fingerprint || null
     ).run();
     
+    // TODO: Send email with license key (email system to be implemented)
+    // await sendLicenseKeyEmail(body.email, licenseKey, product.name, product.download_url);
+    
     return c.json({
       success: true,
       customer_id: result.meta.last_row_id,
+      product_id: body.product_id,
       license_key: licenseKey,
       download_url: product.download_url,
       message: 'Registration completed successfully'

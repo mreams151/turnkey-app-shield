@@ -1698,6 +1698,19 @@ class AdminPanel {
                     </div>
 
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Landing Page URL</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="url" id="edit-product-landing-url" value="${product.landing_page_token || ''}" readonly 
+                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600">
+                            <button type="button" onclick="adminPanel.copyToClipboard('${product.landing_page_token || ''}')" 
+                                class="px-3 py-2 text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-1">Customer registration page URL (auto-generated)</p>
+                    </div>
+
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Rule Template *</label>
                         <select id="edit-product-rules" required
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
