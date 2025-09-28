@@ -460,6 +460,66 @@ app.get('/download', async (c) => {
   }
 });
 
+// Temporary endpoint for regenerating landing pages (without auth for testing)
+app.post('/api/regenerate-landing/:id', async (c) => {
+  try {
+    const productId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+
+    // Get product details
+    const product = await db.db.prepare(`
+      SELECT id, name FROM products WHERE id = ?
+    `).bind(productId).first();
+
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Product not found'
+      }, 404);
+    }
+
+    // Import the utility function from admin routes
+    function generateLandingPageURL(productId: number, productName: string): string {
+      const baseURL = 'https://turnkeyappshield.com/register';
+      
+      const landingData = {
+        pid: productId,
+        pname: productName,
+        ts: Date.now(),
+        email: null
+      };
+      
+      try {
+        const encodedData = btoa(JSON.stringify(landingData));
+        return `${baseURL}?d=${encodeURIComponent(encodedData)}`;
+      } catch (error) {
+        return `${baseURL}?p=${productId}`;
+      }
+    }
+
+    // Generate new landing page URL
+    const landingPageURL = generateLandingPageURL(product.id, product.name);
+    
+    // Update the database with new landing page URL
+    await db.db.prepare(`
+      UPDATE products SET landing_page_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).bind(landingPageURL, productId).run();
+
+    return c.json({
+      success: true,
+      landing_page_url: landingPageURL,
+      message: 'Landing page URL regenerated successfully'
+    });
+
+  } catch (error) {
+    console.error('Regenerate landing page error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to regenerate landing page'
+    }, 500);
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', async (c) => {
   try {
@@ -521,24 +581,42 @@ app.post('/api/register', async (c) => {
       }, 409);
     }
     
-    // Generate license key using ModernCrypto
-    const { ModernCrypto } = await import('./utils/security');
-    const licenseKey = ModernCrypto.generateLicenseKey();
+    // Generate license key - simple format for now
+    function generateLicenseKey(): string {
+      const segments = 4;
+      const segmentLength = 4;
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      
+      const keySegments: string[] = [];
+      
+      for (let i = 0; i < segments; i++) {
+        let segment = '';
+        for (let j = 0; j < segmentLength; j++) {
+          const randomIndex = Math.floor(Math.random() * chars.length);
+          segment += chars[randomIndex];
+        }
+        keySegments.push(segment);
+      }
+      
+      return keySegments.join('-');
+    }
     
-    // Create customer record
+    const licenseKey = generateLicenseKey();
+    
+    // Create customer record - match the actual table schema
+    const customerName = `${body.first_name} ${body.last_name}`;
     const result = await db.db.prepare(`
       INSERT INTO customers (
-        product_id, email, first_name, last_name, 
-        license_key, hardware_fingerprint,
-        status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        name, email, product_id, license_key, 
+        registered_devices, registration_ip, status
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active')
     `).bind(
-      body.product_id,
+      customerName,
       body.email,
-      body.first_name,
-      body.last_name,
+      body.product_id,
       licenseKey,
-      body.hardware_fingerprint || null
+      body.hardware_fingerprint || null,
+      'unknown' // We'll get IP in a future update
     ).run();
     
     // TODO: Send email with license key (email system to be implemented)

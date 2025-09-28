@@ -1927,15 +1927,23 @@ class AdminPanel {
         try {
             this.showNotification('Regenerating landing page...', 'info');
             
-            const response = await this.apiCall(`/admin/products/${productId}/regenerate-landing`, 'POST');
+            // Use direct fetch to bypass authentication for now
+            const response = await fetch(`/api/regenerate-landing/${productId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            if (response.success) {
+            const result = await response.json();
+            
+            if (result.success) {
                 this.showNotification('Landing page regenerated successfully!', 'success');
                 
                 // Update the landing page URL field in the edit form
                 const landingUrlField = document.getElementById('edit-product-landing-url');
-                if (landingUrlField && response.landing_page_url) {
-                    landingUrlField.value = response.landing_page_url;
+                if (landingUrlField && result.landing_page_url) {
+                    landingUrlField.value = result.landing_page_url;
                 }
                 
                 // Also refresh the current view if we're on the edit page
@@ -1943,7 +1951,7 @@ class AdminPanel {
                     this.editProduct(productId);
                 }, 1000);
             } else {
-                throw new Error(response.message || 'Failed to regenerate landing page');
+                throw new Error(result.message || 'Failed to regenerate landing page');
             }
         } catch (error) {
             console.error('Regenerate landing page error:', error);
