@@ -1388,10 +1388,16 @@ class AdminPanel {
                                 : '<span class="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded">Inactive</span>';
                             
                             const actions = isActive
-                                ? `<button onclick="adminPanel.editProduct(${product.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                                ? `<button onclick="adminPanel.showProductDetails(${product.id})" class="text-purple-600 hover:text-purple-800 mr-3">
+                                     <i class="fas fa-info-circle mr-1"></i>Details
+                                   </button>
+                                   <button onclick="adminPanel.editProduct(${product.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
                                    <button onclick="adminPanel.deleteProduct(${product.id})" class="text-red-600 hover:text-red-800">Delete</button>`
                                 : `<button onclick="adminPanel.restoreProduct(${product.id})" class="text-green-600 hover:text-green-800 mr-3">
                                      <i class="fas fa-undo mr-1"></i>Restore
+                                   </button>
+                                   <button onclick="adminPanel.showProductDetails(${product.id})" class="text-purple-600 hover:text-purple-800 mr-3">
+                                     <i class="fas fa-info-circle mr-1"></i>Details
                                    </button>
                                    <button onclick="adminPanel.editProduct(${product.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>`;
                             
@@ -1468,6 +1474,14 @@ class AdminPanel {
                     </div>
 
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Download URL *</label>
+                        <input type="url" id="product-download-url" required 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="https://example.com/downloads/myapp.zip">
+                        <p class="text-sm text-gray-500 mt-1">Direct link where customers will download the software</p>
+                    </div>
+
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Rule Template *</label>
                         <select id="product-rules" required
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -1531,12 +1545,13 @@ class AdminPanel {
         const name = document.getElementById('product-name').value.trim();
         const version = document.getElementById('product-version').value.trim();
         const description = document.getElementById('product-description').value.trim();
+        const downloadUrl = document.getElementById('product-download-url').value.trim();
         const selectedRuleId = document.getElementById('product-rules').value;
         const errorDiv = document.getElementById('product-error');
         const saveBtn = document.getElementById('save-product-btn');
 
-        if (!name || !version || !selectedRuleId) {
-            errorDiv.textContent = 'Please fill in all required fields including rule template';
+        if (!name || !version || !downloadUrl || !selectedRuleId) {
+            errorDiv.textContent = 'Please fill in all required fields including download URL and rule template';
             errorDiv.classList.remove('hidden');
             return;
         }
@@ -1550,6 +1565,7 @@ class AdminPanel {
                 name: name,
                 version: version,
                 description: description,
+                download_url: downloadUrl,
                 rule_id: parseInt(selectedRuleId)
             });
 
@@ -1674,6 +1690,14 @@ class AdminPanel {
                     </div>
 
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Download URL *</label>
+                        <input type="url" id="edit-product-download-url" value="${product.download_url || ''}" required 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="https://example.com/downloads/myapp.zip">
+                        <p class="text-sm text-gray-500 mt-1">Direct link where customers will download the software</p>
+                    </div>
+
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Rule Template *</label>
                         <select id="edit-product-rules" required
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -1684,15 +1708,23 @@ class AdminPanel {
 
                     <div id="edit-product-error" class="hidden text-red-600 text-sm"></div>
 
-                    <div class="flex justify-end space-x-4">
-                        <button type="button" onclick="adminPanel.showPage('products')" 
-                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
-                            Cancel
-                        </button>
-                        <button type="submit" id="save-edit-product-btn"
-                            class="px-4 py-2 bg-brand-blue text-white rounded-md hover:bg-blue-700">
-                            Update Product
-                        </button>
+                    <div class="flex justify-between">
+                        <div class="flex space-x-3">
+                            <button type="button" onclick="adminPanel.regenerateLandingPage(${product.id})" 
+                                class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                <i class="fas fa-sync-alt mr-2"></i>Regenerate Landing Page
+                            </button>
+                        </div>
+                        <div class="flex space-x-4">
+                            <button type="button" onclick="adminPanel.showPage('products')" 
+                                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button type="submit" id="save-edit-product-btn"
+                                class="px-4 py-2 bg-brand-blue text-white rounded-md hover:bg-blue-700">
+                                Update Product
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -1732,12 +1764,13 @@ class AdminPanel {
         const name = document.getElementById('edit-product-name').value.trim();
         const version = document.getElementById('edit-product-version').value.trim();
         const description = document.getElementById('edit-product-description').value.trim();
+        const downloadUrl = document.getElementById('edit-product-download-url').value.trim();
         const selectedRuleId = document.getElementById('edit-product-rules').value;
         const errorDiv = document.getElementById('edit-product-error');
         const saveBtn = document.getElementById('save-edit-product-btn');
 
-        if (!name || !version || !selectedRuleId) {
-            errorDiv.textContent = 'Please fill in all required fields including rule template';
+        if (!name || !version || !downloadUrl || !selectedRuleId) {
+            errorDiv.textContent = 'Please fill in all required fields including download URL and rule template';
             errorDiv.classList.remove('hidden');
             return;
         }
@@ -1751,6 +1784,7 @@ class AdminPanel {
                 name: name,
                 version: version,
                 description: description,
+                download_url: downloadUrl,
                 rule_id: parseInt(selectedRuleId)
             });
 
@@ -1767,6 +1801,164 @@ class AdminPanel {
         } finally {
             saveBtn.innerHTML = 'Update Product';
             saveBtn.disabled = false;
+        }
+    }
+
+    async showProductDetails(productId) {
+        try {
+            console.log('Viewing product details:', productId);
+            
+            // Get product data
+            const response = await this.apiCall(`/admin/products/${productId}`);
+            if (!response.success) {
+                this.showError('Failed to load product details');
+                return;
+            }
+            
+            const product = response.product;
+            
+            // Use stored landing page URL or show that it needs to be generated
+            const landingPageUrl = product.landing_page_token || 'No landing page URL - regenerate to create';
+            
+            const content = document.getElementById('main-content');
+            content.innerHTML = `
+                <div class="mb-8">
+                    <div class="flex items-center">
+                        <button onclick="adminPanel.showPage('products')" class="text-gray-600 hover:text-gray-800 mr-4">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-900">Product Details</h1>
+                            <p class="text-gray-600 mt-2">View product information and settings</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="p-6 space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">Product Name</h3>
+                                <p class="text-lg text-gray-900">${product.name}</p>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">Version</h3>
+                                <p class="text-lg text-gray-900">${product.version}</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+                            <p class="text-gray-900">${product.description || 'No description provided'}</p>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-700 mb-2">Download URL</h3>
+                            <div class="flex items-center space-x-2">
+                                <p class="text-gray-900 break-all">${product.download_url || 'No download URL provided'}</p>
+                                ${product.download_url ? `<button onclick="adminPanel.copyToClipboard('${product.download_url}')" class="text-blue-600 hover:text-blue-800"><i class="fas fa-copy"></i></button>` : ''}
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-700 mb-2">Landing Page URL</h3>
+                            <div class="flex items-center space-x-2">
+                                <p class="text-gray-900 break-all">${landingPageUrl}</p>
+                                <button onclick="adminPanel.copyToClipboard('${landingPageUrl}')" class="text-blue-600 hover:text-blue-800">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-700 mb-2">Rule Template</h3>
+                            <p class="text-gray-900">ID: ${product.rule_id}</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">Status</h3>
+                                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                    ${product.status === 'active' ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">Created Date</h3>
+                                <p class="text-gray-900">${new Date(product.created_at).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end pt-6 border-t border-gray-200">
+                            <div class="flex space-x-4">
+                                <button type="button" onclick="adminPanel.showPage('products')" 
+                                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                                    Back to Products
+                                </button>
+                                <button type="button" onclick="adminPanel.editProduct(${product.id})" 
+                                    class="px-4 py-2 bg-brand-blue text-white rounded-md hover:bg-blue-700">
+                                    Edit Product
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+        } catch (error) {
+            console.error('Show product details error:', error);
+            this.showError('Failed to load product details');
+        }
+    }
+
+    async regenerateLandingPage(productId) {
+        try {
+            this.showNotification('Regenerating landing page...', 'info');
+            
+            const response = await this.apiCall(`/admin/products/${productId}/regenerate-landing`, 'POST');
+            
+            if (response.success) {
+                this.showNotification('Landing page regenerated successfully!', 'success');
+                // Refresh the current view if we're on the edit page
+                const currentUrl = window.location.hash;
+                if (currentUrl.includes('edit')) {
+                    this.editProduct(productId);
+                }
+            } else {
+                throw new Error(response.message || 'Failed to regenerate landing page');
+            }
+        } catch (error) {
+            console.error('Regenerate landing page error:', error);
+            this.showError('Failed to regenerate landing page: ' + error.message);
+        }
+    }
+
+    async copyLandingPageUrl(productId) {
+        try {
+            const response = await this.apiCall(`/admin/products/${productId}/details`);
+            
+            if (response.success && response.landing_page_url) {
+                await this.copyToClipboard(response.landing_page_url);
+                this.showNotification('Landing page URL copied to clipboard!', 'success');
+            } else {
+                throw new Error('Failed to get landing page URL');
+            }
+        } catch (error) {
+            console.error('Copy landing page URL error:', error);
+            this.showError('Failed to copy landing page URL: ' + error.message);
+        }
+    }
+
+    async copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
         }
     }
 

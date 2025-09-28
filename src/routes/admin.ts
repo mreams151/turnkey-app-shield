@@ -6,9 +6,32 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 import type { AppContext, AdminDashboardData } from '../types/database';
 import { DatabaseManager, DatabaseInitializer } from '../utils/database';
-import { PasswordUtils, TokenUtils } from '../utils/security';
+import { PasswordUtils, TokenUtils, ModernCrypto } from '../utils/security';
 
 const admin = new Hono<AppContext>();
+
+// Utility function to generate encrypted landing page URL
+function generateLandingPageURL(productId: number, productName: string, customerEmail?: string): string {
+  const baseURL = 'https://turnkeysoftwareshield.com/Landing/';
+  
+  // Create data object to encrypt
+  const landingData = {
+    productId,
+    productName,
+    timestamp: Date.now(),
+    customerEmail: customerEmail || null
+  };
+  
+  try {
+    // For now, use base64 encoding (compatible with Cloudflare Workers)
+    const encodedData = btoa(JSON.stringify(landingData));
+    return `${baseURL}?data=${encodeURIComponent(encodedData)}`;
+  } catch (error) {
+    console.error('Error generating landing page URL:', error);
+    // Fallback: simple URL with product ID
+    return `${baseURL}?product=${productId}&name=${encodeURIComponent(productName)}`;
+  }
+}
 
 // Admin authentication middleware
 const authMiddleware = async (c: any, next: any) => {
@@ -66,6 +89,7 @@ const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   version: z.string().min(1, 'Version is required'),
   description: z.string().optional(),
+  download_url: z.string().url('Download URL must be a valid URL'),
   rule_id: z.number().int().positive('Rule ID must be a positive integer')
 });
 
@@ -734,13 +758,24 @@ admin.post('/products', authMiddleware, async (c) => {
       validation.data.version,
       validation.data.description || null,
       ruleId,
-      'https://example.com/download/' + validation.data.name.toLowerCase().replace(/\s+/g, '-')
+      validation.data.download_url
     ).run();
+
+    const productId = result.meta.last_row_id as number;
+    
+    // Generate landing page URL after product creation
+    const landingPageURL = generateLandingPageURL(productId, validation.data.name);
+    
+    // Store the landing page URL in the database
+    await db.db.prepare(`
+      UPDATE products SET landing_page_token = ? WHERE id = ?
+    `).bind(landingPageURL, productId).run();
 
     return c.json({
       success: true,
-      product_id: result.meta.last_row_id,
+      product_id: productId,
       encryption_key: encryptionKey,
+      landing_page_url: landingPageURL,
       message: 'Product created successfully'
     });
 
@@ -820,15 +855,16 @@ admin.put('/products/:id', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // Update product - use current schema including rule_id
+    // Update product - use current schema including rule_id and download_url
     await db.db.prepare(`
       UPDATE products 
-      SET name = ?, version = ?, description = ?, rule_id = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, version = ?, description = ?, download_url = ?, rule_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
       validation.data.name,
       validation.data.version,
       validation.data.description || null,
+      validation.data.download_url,
       validation.data.rule_id,
       productId
     ).run();
@@ -940,6 +976,101 @@ admin.put('/products/:id/restore', authMiddleware, async (c) => {
     return c.json({
       success: false,
       message: 'Failed to restore product'
+    }, 500);
+  }
+});
+
+// Regenerate Landing Page URL for a product
+admin.post('/products/:id/regenerate-landing', authMiddleware, async (c) => {
+  try {
+    const productId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+
+    // Get product details
+    const product = await db.db.prepare(`
+      SELECT id, name FROM products WHERE id = ?
+    `).bind(productId).first();
+
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Product not found'
+      }, 404);
+    }
+
+    // Generate new landing page URL
+    const landingPageURL = generateLandingPageURL(product.id, product.name);
+    
+    // Update the database with new landing page URL
+    await db.db.prepare(`
+      UPDATE products SET landing_page_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).bind(landingPageURL, productId).run();
+
+    return c.json({
+      success: true,
+      landing_page_url: landingPageURL,
+      message: 'Landing page URL regenerated successfully'
+    });
+
+  } catch (error) {
+    console.error('Regenerate landing page error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to regenerate landing page URL'
+    }, 500);
+  }
+});
+
+// Get detailed product information
+admin.get('/products/:id/details', authMiddleware, async (c) => {
+  try {
+    const productId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+
+    // Get product with rule information
+    const product = await db.db.prepare(`
+      SELECT p.*, lr.name as rule_name
+      FROM products p
+      LEFT JOIN license_rules lr ON p.rule_id = lr.id
+      WHERE p.id = ?
+    `).bind(productId).first();
+
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Product not found'
+      }, 404);
+    }
+
+    // Use stored landing page URL or generate if missing
+    let landingPageURL = product.landing_page_token;
+    if (!landingPageURL) {
+      landingPageURL = generateLandingPageURL(product.id, product.name);
+      // Update the database with the generated URL
+      await db.db.prepare(`
+        UPDATE products SET landing_page_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).bind(landingPageURL, productId).run();
+    }
+
+    // Get registration count for this product
+    const registrationCount = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM customers WHERE product_id = ?
+    `).bind(productId).first();
+
+    return c.json({
+      success: true,
+      product: {
+        ...product,
+        landing_page_url: landingPageURL,
+        registration_count: registrationCount?.count || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Get product details error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to fetch product details'
     }, 500);
   }
 });
