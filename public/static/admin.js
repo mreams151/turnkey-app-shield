@@ -56,8 +56,8 @@ class AdminPanel {
 
     showLogin() {
         this.dashboardRendered = false; // Reset flag when showing login
-        const app = document.getElementById('admin-app');
-        app.innerHTML = `
+        const loginApp = document.getElementById('admin-app');
+        loginApp.innerHTML = `
             <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
                 <div class="max-w-md w-full space-y-8">
                     <div>
@@ -175,11 +175,22 @@ class AdminPanel {
                 console.log('Dashboard data received:', response.data);
                 
                 console.log('=== RENDERING MAIN LAYOUT ===');
-                this.renderMainLayout();
+                try {
+                    this.renderMainLayout();
+                    console.log('=== MAIN LAYOUT RENDERED SUCCESSFULLY ===');
+                } catch (layoutError) {
+                    console.error('=== MAIN LAYOUT ERROR ===', layoutError);
+                    throw new Error('Failed to render main layout: ' + layoutError.message);
+                }
                 
                 console.log('=== SHOWING DASHBOARD ===');
-                this.showDashboard(response.data.stats);
-                console.log('=== DASHBOARD RENDER COMPLETE ===');
+                try {
+                    this.showDashboard(response.data.stats);
+                    console.log('=== DASHBOARD RENDER COMPLETE ===');
+                } catch (dashboardError) {
+                    console.error('=== DASHBOARD SHOW ERROR ===', dashboardError);
+                    throw new Error('Failed to show dashboard: ' + dashboardError.message);
+                }
             } else {
                 console.error('Dashboard API returned success=false:', response);
                 throw new Error(response.error || 'Unknown error');
@@ -194,14 +205,22 @@ class AdminPanel {
                 config: error.config
             });
             
-            this.dashboardRendered = false; // Reset flag on error
+            // CRITICAL FIX: Reset dashboard flag to allow retry
+            this.dashboardRendered = false;
+            
+            // Also render main layout if it hasn't been rendered yet
+            const appElement = document.getElementById('admin-app');
+            if (!appElement || appElement.innerHTML === '') {
+                this.renderMainLayout();
+            }
+            
             this.showError('Failed to load dashboard data: ' + (error.message || error));
         }
     }
 
     showLoading() {
-        const app = document.getElementById('admin-app');
-        app.innerHTML = `
+        const loadingApp = document.getElementById('admin-app');
+        loadingApp.innerHTML = `
             <div class="flex items-center justify-center min-h-screen">
                 <div class="text-center">
                     <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-blue mx-auto mb-4"></div>
@@ -212,8 +231,8 @@ class AdminPanel {
     }
 
     showError(message) {
-        const app = document.getElementById('admin-app');
-        app.innerHTML = `
+        const errorApp = document.getElementById('admin-app');
+        errorApp.innerHTML = `
             <div class="flex items-center justify-center min-h-screen">
                 <div class="text-center">
                     <i class="fas fa-exclamation-triangle text-4xl text-red-500 mb-4"></i>
@@ -229,9 +248,15 @@ class AdminPanel {
 
     // NEW: Separate main layout from dashboard content to prevent infinite scroll
     renderMainLayout() {
-        if (this.dashboardRendered) return; // Prevent multiple renders
-        
+        // Get app element
         const app = document.getElementById('admin-app');
+        
+        // Only prevent render if layout exists and is not empty
+        if (this.dashboardRendered && app && app.innerHTML.includes('nav') && app.innerHTML.includes('sidebar')) {
+            console.log('Main layout already rendered, skipping');
+            return;
+        }
+        
         app.innerHTML = `
             <!-- Navigation -->
             <nav class="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-50">
