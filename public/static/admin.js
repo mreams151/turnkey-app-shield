@@ -74,9 +74,9 @@ class AdminPanel {
                     <form class="mt-8 space-y-6" id="login-form">
                         <div class="rounded-md shadow-sm -space-y-px">
                             <div>
-                                <input id="username" name="username" type="text" required
+                                <input id="username" name="username" type="email" required
                                     class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
-                                    placeholder="Username">
+                                    placeholder="Email (admin@example.com)">
                             </div>
                             <div>
                                 <input id="password" name="password" type="password" required
