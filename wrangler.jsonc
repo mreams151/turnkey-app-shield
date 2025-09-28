@@ -17,17 +17,28 @@
   // KV Storage for Sessions, Cache, and Rate Limiting  
   "kv_namespaces": [
     {
-      "binding": "CACHE",
+      "binding": "KV",
       "id": "04fe2ec769584fa284bbe384a6bb23e7",
       "preview_id": "04fe2ec769584fa284bbe384a6bb23e7"
     }
   ],
+  
+  // R2 Storage for File Uploads and Protected Executables  
+  // Temporarily commented out until bucket is created in Cloudflare dashboard
+  // "r2_buckets": [
+  //   {
+  //     "binding": "R2", 
+  //     "bucket_name": "turnkeyappshield"
+  //   }
+  // ],
   
   // Environment Variables
   "vars": {
     "ENVIRONMENT": "development",
     "API_VERSION": "v2",
     "MAX_ACTIVATIONS_PER_MINUTE": "100",
-    "SYSTEM_NAME": "TurnkeyAppShield"
+    "SYSTEM_NAME": "TurnkeyAppShield",
+    "FILE_UPLOAD_MAX_SIZE": "104857600",
+    "FILE_STORAGE_RETENTION_DAYS": "30"
   }
 }

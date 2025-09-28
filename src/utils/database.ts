@@ -404,31 +404,35 @@ export class DatabaseManager {
         activationStats,
         securityStats
       ] = await Promise.all([
-        // Customer statistics - handle empty table
+        // Customer statistics - exclude revoked (deleted) customers
         this.db.prepare(`
           SELECT 
             COUNT(*) as total_customers,
-            COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_customers,
-            COUNT(CASE WHEN created_at >= date('now', '-30 days') THEN 1 END) as new_customers_30d
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_customers,
+            COUNT(CASE WHEN registration_date >= date('now', '-30 days') THEN 1 END) as new_customers_30d
           FROM customers
+          WHERE status != 'revoked'
         `).first().catch(() => ({ total_customers: 0, active_customers: 0, new_customers_30d: 0 })),
         
-        // License statistics - this table might not exist yet
+        // License statistics - count products as licenses (match products tab filtering)
         this.db.prepare(`
           SELECT 
-            0 as total_licenses,
-            0 as active_licenses,
-            0 as expired_licenses,
-            0 as new_licenses_30d
-        `).first(),
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as total_licenses,
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_licenses,
+            COUNT(CASE WHEN status = 'deprecated' THEN 1 END) as expired_licenses,
+            COUNT(CASE WHEN created_at >= date('now', '-30 days') AND status = 'active' THEN 1 END) as new_licenses_30d
+          FROM products
+        `).first().catch(() => ({ total_licenses: 0, active_licenses: 0, expired_licenses: 0, new_licenses_30d: 0 })),
         
-        // Activation statistics - this table might not exist yet
+        // Activation statistics - actual data from activation_logs
         this.db.prepare(`
           SELECT 
-            0 as total_validations_today,
-            0 as successful_validations_today,
-            0 as failed_validations_today
-        `).first(),
+            COUNT(*) as total_validations_today,
+            COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful_validations_today,
+            COUNT(CASE WHEN status IN ('invalid', 'expired', 'revoked', 'suspended') THEN 1 END) as failed_validations_today
+          FROM activation_logs 
+          WHERE date(activation_time) = date('now')
+        `).first().catch(() => ({ total_validations_today: 0, successful_validations_today: 0, failed_validations_today: 0 })),
         
         // Security events statistics
         this.db.prepare(`

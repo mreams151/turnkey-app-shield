@@ -472,6 +472,110 @@ export class RateLimiter {
 }
 
 /**
+ * Virtual Machine Detection utilities
+ */
+export class VMDetector {
+  /**
+   * Detect if running in a virtual machine based on hardware fingerprint
+   */
+  static isVirtualMachine(components: {
+    macAddresses: string[];
+    computerName: string;
+    osVersion: string;
+    processorInfo?: string;
+  }): {
+    isVM: boolean;
+    indicators: string[];
+    confidence: 'low' | 'medium' | 'high';
+  } {
+    const indicators: string[] = [];
+    let vmScore = 0;
+
+    // Common VM MAC address prefixes
+    const vmMacPrefixes = [
+      '00:0c:29', // VMware
+      '00:50:56', // VMware
+      '08:00:27', // VirtualBox
+      '00:03:ff', // Microsoft Virtual PC
+      '00:1c:42', // Parallels
+      '00:0f:4b', // Virtual Iron
+    ];
+
+    // Check MAC addresses for VM indicators
+    for (const mac of components.macAddresses) {
+      const normalizedMac = mac.toLowerCase();
+      for (const prefix of vmMacPrefixes) {
+        if (normalizedMac.startsWith(prefix)) {
+          indicators.push(`VM MAC address detected: ${mac}`);
+          vmScore += 3;
+        }
+      }
+    }
+
+    // Check computer name patterns
+    const computerName = components.computerName.toLowerCase();
+    const vmNamePatterns = [
+      /^vm-/, /vmware/, /vbox/, /virtual/, /^win-[a-z0-9]+$/
+    ];
+
+    for (const pattern of vmNamePatterns) {
+      if (pattern.test(computerName)) {
+        indicators.push(`VM computer name pattern: ${components.computerName}`);
+        vmScore += 2;
+      }
+    }
+
+    // Check processor info for VM indicators
+    if (components.processorInfo) {
+      const processor = components.processorInfo.toLowerCase();
+      if (processor.includes('vmware') || processor.includes('virtual') || processor.includes('qemu')) {
+        indicators.push(`VM processor detected: ${components.processorInfo}`);
+        vmScore += 3;
+      }
+    }
+
+    // Determine confidence based on score
+    let confidence: 'low' | 'medium' | 'high';
+    let isVM = false;
+
+    if (vmScore >= 5) {
+      confidence = 'high';
+      isVM = true;
+    } else if (vmScore >= 3) {
+      confidence = 'medium';
+      isVM = true;
+    } else if (vmScore > 0) {
+      confidence = 'low';
+      isVM = false; // Don't block on low confidence
+    } else {
+      confidence = 'low';
+      isVM = false;
+    }
+
+    return {
+      isVM,
+      indicators,
+      confidence
+    };
+  }
+
+  /**
+   * Get a human-readable summary of VM detection results
+   */
+  static getVMDetectionSummary(result: {
+    isVM: boolean;
+    indicators: string[];
+    confidence: 'low' | 'medium' | 'high';
+  }): string {
+    if (!result.isVM) {
+      return 'Hardware appears to be physical.';
+    }
+
+    return `Virtual machine detected (${result.confidence} confidence). Indicators: ${result.indicators.join(', ')}`;
+  }
+}
+
+/**
  * Security validation utilities
  */
 export class SecurityValidator {

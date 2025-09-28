@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS activation_logs (
   file_version TEXT, -- Version of protected software
   
   -- Validation Results
-  status TEXT NOT NULL CHECK (status IN ('valid', 'invalid', 'expired', 'blocked', 'suspended')),
+  status TEXT NOT NULL CHECK (status IN ('valid', 'invalid', 'expired', 'revoked', 'suspended')),
   validation_method TEXT DEFAULT 'standard', -- standard, offline_cache, emergency
   rule_violations TEXT, -- JSON array of any rule violations
   

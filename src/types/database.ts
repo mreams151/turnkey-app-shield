@@ -54,7 +54,7 @@ export interface License {
   mac_addresses: string;
   computer_name: string;
   os_version: string;
-  status: 'active' | 'suspended' | 'expired' | 'revoked';
+  status: 'active' | 'suspended' | 'expired' | 'revoked'; // UI: Green=active, Yellow=suspended, Red=invalid/unrecognized
   expires_at?: string;
   last_validation?: string;
   validation_count: number;
@@ -87,6 +87,8 @@ export interface ActivationLog {
   hardware_changes?: string;
   error_message?: string;
   response_time: number;
+  session_id?: string;
+  session_duration?: number;
   created_at: string;
 }
 
@@ -191,7 +193,7 @@ export interface ValidateLicenseRequest {
 
 export interface ValidateLicenseResponse {
   valid: boolean;
-  status: 'active' | 'suspended' | 'expired' | 'revoked' | 'invalid';
+  status: 'active' | 'suspended' | 'expired' | 'revoked' | 'invalid'; // Any non-active/suspended shows as red badge with actual status
   message: string;
   expires_at?: string;
   validation_id?: number;
@@ -232,6 +234,7 @@ export interface AdminDashboardData {
   stats: {
     total_customers: number;
     active_licenses: number;
+    total_products: number;
     total_validations_today: number;
     security_events_today: number;
     revenue_this_month: number;
@@ -247,22 +250,211 @@ export interface AdminDashboardData {
   };
 }
 
+// File Upload and Protection System Interfaces
+export interface FileUpload {
+  id: number;
+  customer_id: number;
+  original_filename: string;
+  file_size: number;
+  file_hash: string;
+  mime_type: string;
+  upload_path: string;
+  status: 'uploading' | 'uploaded' | 'processing' | 'protected' | 'failed' | 'deleted';
+  protection_job_id?: number;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProtectionJob {
+  id: number;
+  customer_id: number;
+  file_upload_id: number;
+  job_type: 'protection' | 'repackaging' | 'licensing';
+  protection_level: 'basic' | 'standard' | 'premium' | 'enterprise';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progress: number; // 0-100
+  
+  // Protection settings
+  enable_vm_protection: boolean;
+  enable_hardware_binding: boolean;
+  enable_encryption: boolean;
+  enable_anti_debug: boolean;
+  enable_anti_dump: boolean;
+  max_concurrent_users: number;
+  license_duration_days?: number;
+  
+  // Geographic and time restrictions
+  allowed_countries?: string; // JSON array of country codes
+  blocked_countries?: string; // JSON array of country codes
+  allowed_time_zones?: string; // JSON array of timezone strings
+  business_hours_only: boolean;
+  business_hours_start?: string; // HH:MM format
+  business_hours_end?: string; // HH:MM format
+  allowed_days?: string; // JSON array of day names
+  
+  // Output information
+  protected_file_path?: string;
+  protected_file_size?: number;
+  protected_file_hash?: string;
+  download_url?: string;
+  download_expires_at?: string;
+  
+  // Processing details
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  processing_logs?: string; // JSON array of log entries
+  
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProtectionTemplate {
+  id: number;
+  customer_id?: number; // null for system templates
+  name: string;
+  description?: string;
+  is_system_template: boolean;
+  is_default: boolean;
+  
+  // Protection settings
+  protection_level: 'basic' | 'standard' | 'premium' | 'enterprise';
+  enable_vm_protection: boolean;
+  enable_hardware_binding: boolean;
+  enable_encryption: boolean;
+  enable_anti_debug: boolean;
+  enable_anti_dump: boolean;
+  max_concurrent_users: number;
+  license_duration_days?: number;
+  
+  // Geographic and time restrictions
+  allowed_countries?: string;
+  blocked_countries?: string;
+  allowed_time_zones?: string;
+  business_hours_only: boolean;
+  business_hours_start?: string;
+  business_hours_end?: string;
+  allowed_days?: string;
+  
+  usage_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DownloadLog {
+  id: number;
+  customer_id: number;
+  protection_job_id: number;
+  file_upload_id: number;
+  ip_address: string;
+  user_agent?: string;
+  download_started_at: string;
+  download_completed_at?: string;
+  bytes_downloaded: number;
+  status: 'started' | 'completed' | 'failed' | 'cancelled';
+  error_message?: string;
+  created_at: string;
+}
+
+// Upload and Protection Request/Response Types
+export interface UploadFileRequest {
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  customer_id: number;
+}
+
+export interface UploadFileResponse {
+  success: boolean;
+  upload_id?: number;
+  upload_url?: string;
+  message: string;
+}
+
+export interface CreateProtectionJobRequest {
+  file_upload_id: number;
+  customer_id: number;
+  protection_template_id?: number;
+  protection_level: 'basic' | 'standard' | 'premium' | 'enterprise';
+  enable_vm_protection: boolean;
+  enable_hardware_binding: boolean;
+  enable_encryption: boolean;
+  enable_anti_debug: boolean;
+  enable_anti_dump: boolean;
+  max_concurrent_users: number;
+  license_duration_days?: number;
+  allowed_countries?: string[];
+  blocked_countries?: string[];
+  allowed_time_zones?: string[];
+  business_hours_only: boolean;
+  business_hours_start?: string;
+  business_hours_end?: string;
+  allowed_days?: string[];
+}
+
+export interface CreateProtectionJobResponse {
+  success: boolean;
+  job_id?: number;
+  message: string;
+  estimated_completion?: string;
+}
+
+export interface ProtectionJobStatus {
+  job_id: number;
+  status: string;
+  progress: number;
+  message?: string;
+  download_url?: string;
+  download_expires_at?: string;
+  error_message?: string;
+}
+
+// Enhanced dashboard data with upload statistics
+export interface CustomerDashboardDataWithUploads extends CustomerDashboardData {
+  file_uploads: FileUpload[];
+  protection_jobs: ProtectionJob[];
+  upload_stats: {
+    total_uploads: number;
+    completed_protections: number;
+    failed_protections: number;
+    total_file_size: number;
+  };
+}
+
+// Enhanced admin dashboard with upload/protection statistics
+export interface AdminDashboardDataWithUploads extends AdminDashboardData {
+  upload_stats: {
+    total_uploads_today: number;
+    protection_jobs_pending: number;
+    protection_jobs_completed_today: number;
+    total_storage_used: number;
+    average_protection_time: number;
+  };
+}
+
 // Utility types for form validation
 export type CustomerCreateData = Omit<Customer, 'id' | 'device_count' | 'last_login' | 'failed_attempts' | 'locked_until' | 'created_at' | 'updated_at'>;
 export type CustomerUpdateData = Partial<CustomerCreateData>;
 export type ProductCreateData = Omit<Product, 'id' | 'created_at' | 'updated_at'>;
 export type ProductUpdateData = Partial<ProductCreateData>;
 export type LicenseCreateData = Omit<License, 'id' | 'license_key' | 'last_validation' | 'validation_count' | 'created_at' | 'updated_at'>;
+export type FileUploadCreateData = Omit<FileUpload, 'id' | 'created_at' | 'updated_at'>;
+export type ProtectionJobCreateData = Omit<ProtectionJob, 'id' | 'created_at' | 'updated_at'>;
+export type ProtectionTemplateCreateData = Omit<ProtectionTemplate, 'id' | 'usage_count' | 'created_at' | 'updated_at'>;
 
 // Cloudflare bindings interface
 export interface Bindings {
   DB: D1Database;
   KV: KVNamespace;
+  R2?: R2Bucket; // For file storage (primary storage when available, falls back to KV)
   ENCRYPTION_KEY: string;
   JWT_SECRET: string;
   ADMIN_JWT_SECRET: string;
   EMAIL_API_KEY?: string;
   WEBHOOK_SECRET?: string;
+  FILE_UPLOAD_MAX_SIZE?: string; // Default: 100MB
+  FILE_STORAGE_RETENTION_DAYS?: string; // Default: 30 days
 }
 
 // Context type for Hono

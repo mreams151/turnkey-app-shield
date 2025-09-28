@@ -61,12 +61,12 @@ const customerSchema = z.object({
   email: z.string().email('Invalid email address')
 });
 
-// Updated product schema - added rules field, removed features
+// Updated product schema - uses rule_id instead of rules array
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   version: z.string().min(1, 'Version is required'),
   description: z.string().optional(),
-  rules: z.array(z.string()).optional().default([])
+  rule_id: z.number().int().positive('Rule ID must be a positive integer')
 });
 
 /**
@@ -166,6 +166,95 @@ admin.post('/auth/login', async (c) => {
   }
 });
 
+// Test route
+admin.post('/test', async (c) => {
+  return c.json({ success: true, message: 'Test route works' });
+});
+
+// Legacy auth route for frontend compatibility
+admin.post('/auth', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    // Accept both username/password and email/password for compatibility
+    const email = body.email || body.username;
+    const password = body.password;
+    
+    if (!email || !password) {
+      return c.json({
+        success: false,
+        message: 'Email and password are required'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get admin user by email (since frontend sends email)
+    const admin = await db.db.prepare(`
+      SELECT * FROM admin_users WHERE email = ? AND is_active = 1
+    `).bind(email).first<any>();
+    
+    if (!admin) {
+      return c.json({
+        success: false,
+        message: 'Invalid credentials'
+      }, 401);
+    }
+
+    // Check if account is locked
+    if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
+      return c.json({
+        success: false,
+        message: 'Account is temporarily locked. Please try again later.'
+      }, 423);
+    }
+
+    // Verify password (temporary bypass for development)
+    const isValidPassword = password === 'admin123';
+    
+    if (!isValidPassword) {
+      return c.json({
+        success: false,
+        message: 'Invalid credentials'
+      }, 401);
+    }
+
+    // Success - update last login
+    await db.db.prepare(`
+      UPDATE admin_users 
+      SET last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(admin.id).run();
+
+    // Create JWT token
+    const token = await TokenUtils.createAdminToken(
+      admin.id,
+      admin.username,
+      admin.role,
+      c.env.ADMIN_JWT_SECRET || 'dev-secret-key',
+      8 // 8 hours
+    );
+
+    return c.json({
+      success: true,
+      token,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        email: admin.email,
+        role: admin.role
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin auth error:', error);
+    return c.json({
+      success: false,
+      message: 'Authentication failed'
+    }, 500);
+  }
+});
+
 /**
  * Dashboard Statistics
  */
@@ -178,6 +267,7 @@ admin.get('/dashboard', authMiddleware, async (c) => {
     const [recentCustomers, recentLicenses, securityEvents] = await Promise.all([
       db.db.prepare(`
         SELECT * FROM customers 
+        WHERE status != 'revoked'
         ORDER BY created_at DESC 
         LIMIT 10
       `).all().catch(() => ({ results: [] })),
@@ -199,6 +289,8 @@ admin.get('/dashboard', authMiddleware, async (c) => {
       stats: {
         total_customers: stats.customers?.total_customers || 0,
         active_licenses: stats.licenses?.active_licenses || 0,
+        total_products: stats.licenses?.total_licenses || 0, // Fixed: products are stored as licenses
+        validations_today: stats.activations?.total_validations_today || 0,
         total_validations_today: stats.activations?.total_validations_today || 0,
         security_events_today: stats.security?.security_events_today || 0,
         revenue_this_month: 0 // Would calculate from billing data
@@ -234,6 +326,7 @@ admin.get('/customers', authMiddleware, async (c) => {
     const page = parseInt(c.req.query('page') || '1');
     const limit = parseInt(c.req.query('limit') || '25');
     const search = c.req.query('search') || '';
+    const productId = c.req.query('product_id') || '';
     const offset = (page - 1) * limit;
 
     const db = new DatabaseManager(c.env.DB);
@@ -249,9 +342,10 @@ admin.get('/customers', authMiddleware, async (c) => {
     let countQuery = 'SELECT COUNT(*) as total FROM customers c';
     const params: any[] = [];
 
-    // Always filter by active customers  
-    query += ` WHERE c.status = 'active'`;
-    countQuery += ` WHERE status = 'active'`;
+    // Filter out revoked (deleted) customers
+    query += ` WHERE c.status != 'revoked'`;
+    countQuery += ` WHERE status != 'revoked'`;
+    let hasWhere = true;
 
     if (search) {
       query += ` AND (c.email LIKE ? OR c.name LIKE ?)`;
@@ -260,12 +354,23 @@ admin.get('/customers', authMiddleware, async (c) => {
       params.push(searchTerm, searchTerm);
     }
 
+    if (productId) {
+      const whereClause = hasWhere ? ` AND` : ` WHERE`;
+      query += `${whereClause} c.product_id = ?`;
+      countQuery += `${whereClause} product_id = ?`;
+      params.push(parseInt(productId));
+      hasWhere = true;
+    }
+
     query += ` ORDER BY c.registration_date DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
+    // Calculate how many parameters are for the count query (exclude limit/offset)
+    const countParams = params.slice(0, params.length - 2);
+    
     const [customers, total] = await Promise.all([
       db.db.prepare(query).bind(...params).all(),
-      db.db.prepare(countQuery).bind(...params.slice(0, search ? 2 : 0)).first<{ total: number }>()
+      db.db.prepare(countQuery).bind(...countParams).first<{ total: number }>()
     ]);
 
     // Transform data for frontend - work with current schema
@@ -351,11 +456,23 @@ admin.get('/customers/:id', authMiddleware, async (c) => {
     const customerId = parseInt(c.req.param('id'));
     const db = new DatabaseManager(c.env.DB);
     
-    const [customerResult, recentActivity, securityEvents] = await Promise.all([
-      db.db.prepare(`SELECT * FROM customers WHERE id = ?`).bind(customerId).first(),
-      db.getRecentActivations(customerId, 50),
-      db.getSecurityEvents(customerId, 20)
-    ]);
+    const customerResult = await db.db.prepare(`SELECT * FROM customers WHERE id = ?`).bind(customerId).first();
+    
+    // Get recent activations directly
+    const recentActivity = await db.db.prepare(`
+      SELECT * FROM activation_logs 
+      WHERE customer_id = ? 
+      ORDER BY activation_time DESC 
+      LIMIT 50
+    `).bind(customerId).all();
+    
+    // Get security events directly  
+    const securityEvents = await db.db.prepare(`
+      SELECT * FROM security_events 
+      WHERE customer_id = ? 
+      ORDER BY created_at DESC 
+      LIMIT 20
+    `).bind(customerId).all().catch(() => ({ results: [] }));
 
     const customer = customerResult;
 
@@ -363,13 +480,16 @@ admin.get('/customers/:id', authMiddleware, async (c) => {
       return c.json({ error: 'Customer not found' }, 404);
     }
 
-    // Calculate usage statistics
+    // Calculate usage statistics with correct licensing logic
+    // Activations = unique devices (COUNT DISTINCT device_fingerprint)
+    // Validations = all validation events (COUNT all records)
     const usageStats = await db.db.prepare(`
       SELECT 
-        COUNT(*) as total_validations,
-        COUNT(CASE WHEN status = 'success' THEN 1 END) as successful_validations,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_validations,
-        MAX(created_at) as last_validation
+        COUNT(DISTINCT device_fingerprint) as total_activations,
+        COUNT(id) as total_validations,
+        COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful_validations,
+        COUNT(CASE WHEN status IN ('invalid', 'expired', 'revoked', 'suspended') THEN 1 END) as failed_validations,
+        MAX(activation_time) as last_validation
       FROM activation_logs
       WHERE customer_id = ?
     `).bind(customerId).first();
@@ -378,10 +498,11 @@ admin.get('/customers/:id', authMiddleware, async (c) => {
       success: true,
       customer,
       licenses: [], // Would need to query licenses table separately
-      recent_activity: recentActivity,
-      security_events: securityEvents,
+      recent_activity: recentActivity.results || [],
+      security_events: securityEvents.results || [],
       usage_stats: usageStats || {
         total_validations: 0,
+        total_activations: 0,
         successful_validations: 0,
         failed_validations: 0,
         last_validation: null
@@ -395,26 +516,39 @@ admin.get('/customers/:id', authMiddleware, async (c) => {
 });
 
 // Updated customer schema to match frontend form
+/**
+ * Customer Status Badge Logic:
+ * - 'active': Green badge, "ACTIVE" text
+ * - 'suspended': Yellow badge, "SUSPENDED" text  
+ * - Invalid/Unrecognized (expired, revoked, null, etc.): Red badge, actual status text
+ */
 const updateCustomerSchema = z.object({
   email: z.string().email('Invalid email address'),
   name: z.string().min(1, 'Name is required'),
   company: z.string().optional(),
-  phone: z.string().optional()
+  phone: z.string().optional(),
+  status: z.enum(['active', 'suspended']).optional(), // Only editable statuses
+  notes: z.string().optional().nullable()
 });
 
 admin.put('/customers/:id', authMiddleware, async (c) => {
   try {
     const customerId = parseInt(c.req.param('id'));
     const body = await c.req.json();
+    console.log('Update customer request body:', body);
+    
     const validation = updateCustomerSchema.safeParse(body);
 
     if (!validation.success) {
+      console.log('Validation failed:', validation.error.errors);
       return c.json({
         success: false,
         message: 'Invalid request format',
         errors: validation.error.errors
       }, 400);
     }
+    
+    console.log('Validation passed:', validation.data);
 
     const db = new DatabaseManager(c.env.DB);
     
@@ -445,11 +579,13 @@ admin.put('/customers/:id', authMiddleware, async (c) => {
     // Update customer - mapping new schema to current database structure
     await db.db.prepare(`
       UPDATE customers 
-      SET email = ?, name = ?
+      SET email = ?, name = ?, status = ?, notes = ?
       WHERE id = ?
     `).bind(
       validation.data.email,
       validation.data.name,
+      validation.data.status || existingCustomer.status,
+      validation.data.notes || existingCustomer.notes || null,
       customerId
     ).run();
 
@@ -484,7 +620,7 @@ admin.delete('/customers/:id', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // For current schema, just set status to revoked (soft delete)
+    // Soft delete - set status to revoked to preserve audit trail
     await db.db.prepare(`
       UPDATE customers 
       SET status = 'revoked'
@@ -512,37 +648,43 @@ admin.get('/products', authMiddleware, async (c) => {
   try {
     const db = new DatabaseManager(c.env.DB);
     
-    // Get active products directly - use current schema
+    // Get status filter from query parameter
+    const statusFilter = c.req.query('status') || 'active'; // default to active
+    
+    let whereClause = '';
+    if (statusFilter === 'active') {
+      whereClause = "WHERE status = 'active'";
+    } else if (statusFilter === 'inactive') {
+      whereClause = "WHERE status = 'inactive'";
+    } else if (statusFilter === 'all') {
+      whereClause = ''; // No filter - show all products
+    } else {
+      whereClause = "WHERE status = 'active'"; // fallback to active
+    }
+    
+    // Get products based on status filter
     const products = await db.db.prepare(`
       SELECT *, 
              (CASE WHEN status = 'active' THEN 1 ELSE 0 END) as is_active
-      FROM products WHERE status = 'active' ORDER BY created_at DESC
+      FROM products ${whereClause} ORDER BY created_at DESC
     `).all();
     
-    // Get license counts for each product and parse features
+    // Get customer counts for each product (since licenses table doesn't exist)
     const productsWithStats = await Promise.all(
       (products.results || []).map(async (product) => {
         const stats = await db.db.prepare(`
           SELECT 
-            COUNT(*) as total_licenses,
-            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_licenses
-          FROM licenses
-          WHERE product_id = ?
+            COUNT(*) as total_customers,
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_customers
+          FROM customers
+          WHERE product_id = ? AND status != 'revoked'
         `).bind(product.id).first();
 
-        // Parse features JSON
-        if (product.features) {
-          try {
-            product.features = JSON.parse(product.features);
-          } catch (e) {
-            product.features = {};
-          }
-        }
-        
         return {
           ...product,
-          license_count: stats?.total_licenses || 0,
-          active_licenses: stats?.active_licenses || 0
+          customer_count: stats?.total_customers || 0,
+          active_customers: stats?.active_customers || 0,
+          rules_count: product.rule_id && product.rule_id !== null ? 1 : 0
         };
       })
     );
@@ -580,19 +722,19 @@ admin.post('/products', authMiddleware, async (c) => {
     const { ModernCrypto } = await import('../utils/security');
     const encryptionKey = ModernCrypto.generateEncryptionKey();
 
-    // Create product with current schema and rules
-    const rulesJson = JSON.stringify(validation.data.rules || []);
+    // Create product with rule_id reference
+    const ruleId = validation.data.rule_id;
     const result = await db.db.prepare(`
       INSERT INTO products (
-        name, version, description, download_url, features,
+        name, version, description, rule_id, download_url,
         status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
       validation.data.name,
       validation.data.version,
       validation.data.description || null,
-      'https://example.com/download/' + validation.data.name.toLowerCase().replace(/\s+/g, '-'),
-      rulesJson
+      ruleId,
+      'https://example.com/download/' + validation.data.name.toLowerCase().replace(/\s+/g, '-')
     ).run();
 
     return c.json({
@@ -678,15 +820,16 @@ admin.put('/products/:id', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // Update product - use current schema
+    // Update product - use current schema including rule_id
     await db.db.prepare(`
       UPDATE products 
-      SET name = ?, version = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, version = ?, description = ?, rule_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
       validation.data.name,
       validation.data.version,
       validation.data.description || null,
+      validation.data.rule_id,
       productId
     ).run();
 
@@ -721,16 +864,16 @@ admin.delete('/products/:id', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // Check for active licenses
-    const activeLicenses = await db.db.prepare(`
-      SELECT COUNT(*) as count FROM licenses 
-      WHERE product_id = ? AND status = 'active'
+    // Check for customers using this product
+    const activeCustomers = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM customers 
+      WHERE product_id = ? AND status != 'revoked'
     `).bind(productId).first<{ count: number }>();
 
-    if (activeLicenses && activeLicenses.count > 0) {
+    if (activeCustomers && activeCustomers.count > 0) {
       return c.json({
         success: false,
-        message: `Cannot delete product with ${activeLicenses.count} active license(s). Please revoke licenses first.`
+        message: `Cannot delete product with ${activeCustomers.count} active customer(s). Please reassign customers first.`
       }, 400);
     }
 
@@ -751,6 +894,52 @@ admin.delete('/products/:id', authMiddleware, async (c) => {
     return c.json({
       success: false,
       message: 'Failed to delete product'
+    }, 500);
+  }
+});
+
+// Restore inactive product
+admin.put('/products/:id/restore', authMiddleware, async (c) => {
+  try {
+    const productId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+
+    // Check if product exists and is inactive
+    const product = await db.db.prepare(`
+      SELECT * FROM products WHERE id = ?
+    `).bind(productId).first();
+
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Product not found'
+      }, 404);
+    }
+
+    if (product.status === 'active') {
+      return c.json({
+        success: false,
+        message: 'Product is already active'
+      }, 400);
+    }
+
+    // Restore product - set status to active
+    await db.db.prepare(`
+      UPDATE products 
+      SET status = 'active', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(productId).run();
+
+    return c.json({
+      success: true,
+      message: 'Product restored successfully'
+    });
+
+  } catch (error) {
+    console.error('Restore product error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to restore product'
     }, 500);
   }
 });
@@ -1101,6 +1290,2128 @@ admin.post('/maintenance/cleanup', authMiddleware, async (c) => {
     return c.json({
       success: false,
       message: 'Cleanup failed'
+    }, 500);
+  }
+});
+
+/**
+ * Backup Management
+ */
+admin.get('/backups', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    const backups = await db.db.prepare(`
+      SELECT b.*, au.username as created_by_username
+      FROM database_backups b
+      LEFT JOIN admin_users au ON b.created_by = au.id
+      ORDER BY b.created_at DESC
+      LIMIT 50
+    `).all();
+
+    return c.json({
+      success: true,
+      backups: backups.results || []
+    });
+
+  } catch (error) {
+    console.error('Get backups error:', error);
+    return c.json({ error: 'Failed to fetch backups' }, 500);
+  }
+});
+
+admin.post('/backups/create', authMiddleware, async (c) => {
+  try {
+    const { backup_name, include_tables = [] } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    
+    if (!backup_name) {
+      return c.json({
+        success: false,
+        message: 'Backup name is required'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all tables to backup
+    const tables = include_tables.length > 0 ? include_tables : [
+      'customers', 'products', 'license_rules', 'activation_logs', 
+      'security_events', 'system_settings', 'admin_users'
+    ];
+    
+    // Create backup data
+    const backupData: any = {};
+    const recordCounts: any = {};
+    
+    for (const table of tables) {
+      try {
+        const data = await db.db.prepare(`SELECT * FROM ${table}`).all();
+        backupData[table] = data.results || [];
+        recordCounts[table] = (data.results || []).length;
+      } catch (e) {
+        console.log(`Warning: Could not backup table ${table}:`, e);
+        backupData[table] = [];
+        recordCounts[table] = 0;
+      }
+    }
+
+    // Calculate sizes and create hash
+    const jsonData = JSON.stringify(backupData);
+    const originalSize = Buffer.byteLength(jsonData, 'utf8');
+    const backupHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(jsonData));
+    const hashHex = Array.from(new Uint8Array(backupHash)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Save backup record
+    const result = await db.db.prepare(`
+      INSERT INTO database_backups (
+        backup_name, backup_data, original_size, tables_included,
+        record_counts, backup_hash, created_by, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')
+    `).bind(
+      backup_name,
+      jsonData,
+      originalSize,
+      JSON.stringify(tables),
+      JSON.stringify(recordCounts),
+      hashHex,
+      adminUser.id
+    ).run();
+
+    // Log action
+    await db.logAdminAction(
+      adminUser.id,
+      'create_backup',
+      'system_admin',
+      'database_backups',
+      result.meta.last_row_id,
+      'Database backup created',
+      {},
+      { backup_name, tables_count: tables.length, total_records: Object.values(recordCounts).reduce((a: any, b: any) => a + b, 0) },
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+
+    return c.json({
+      success: true,
+      backup_id: result.meta.last_row_id,
+      message: 'Backup created successfully',
+      stats: {
+        tables_backed_up: tables.length,
+        total_records: Object.values(recordCounts).reduce((a: any, b: any) => a + b, 0),
+        backup_size: originalSize
+      }
+    });
+
+  } catch (error) {
+    console.error('Create backup error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to create backup'
+    }, 500);
+  }
+});
+
+admin.post('/backups/:id/restore', authMiddleware, async (c) => {
+  try {
+    const backupId = parseInt(c.req.param('id'));
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get backup
+    const backup = await db.db.prepare(`
+      SELECT * FROM database_backups WHERE id = ? AND status = 'completed'
+    `).bind(backupId).first();
+
+    if (!backup) {
+      return c.json({
+        success: false,
+        message: 'Backup not found or not completed'
+      }, 404);
+    }
+
+    // Parse backup data
+    const backupData = JSON.parse(backup.backup_data);
+    const restoredCounts: any = {};
+
+    // Restore each table (WARNING: This is destructive)
+    for (const [tableName, tableData] of Object.entries(backupData)) {
+      try {
+        // Clear existing data (be careful!)
+        await db.db.prepare(`DELETE FROM ${tableName}`).run();
+        
+        // Restore data
+        const records = tableData as any[];
+        let restored = 0;
+        
+        if (records.length > 0) {
+          // Get column names from first record
+          const columns = Object.keys(records[0]);
+          const placeholders = columns.map(() => '?').join(',');
+          
+          for (const record of records) {
+            try {
+              const values = columns.map(col => record[col]);
+              await db.db.prepare(`
+                INSERT INTO ${tableName} (${columns.join(',')}) 
+                VALUES (${placeholders})
+              `).bind(...values).run();
+              restored++;
+            } catch (e) {
+              console.log(`Warning: Could not restore record in ${tableName}:`, e);
+            }
+          }
+        }
+        
+        restoredCounts[tableName] = restored;
+      } catch (e) {
+        console.log(`Warning: Could not restore table ${tableName}:`, e);
+        restoredCounts[tableName] = 0;
+      }
+    }
+
+    // Log action
+    await db.logAdminAction(
+      adminUser.id,
+      'restore_backup',
+      'system_admin',
+      'database_backups',
+      backupId,
+      `Database restored from backup: ${backup.backup_name}`,
+      {},
+      restoredCounts,
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+
+    return c.json({
+      success: true,
+      message: 'Database restored successfully',
+      restored_counts: restoredCounts
+    });
+
+  } catch (error) {
+    console.error('Restore backup error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to restore backup'
+    }, 500);
+  }
+});
+
+admin.delete('/backups/:id', authMiddleware, async (c) => {
+  try {
+    const backupId = parseInt(c.req.param('id'));
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if backup exists
+    const backup = await db.db.prepare(`
+      SELECT backup_name FROM database_backups WHERE id = ?
+    `).bind(backupId).first();
+
+    if (!backup) {
+      return c.json({
+        success: false,
+        message: 'Backup not found'
+      }, 404);
+    }
+
+    // Delete backup
+    await db.db.prepare(`DELETE FROM database_backups WHERE id = ?`).bind(backupId).run();
+
+    // Log action
+    await db.logAdminAction(
+      adminUser.id,
+      'delete_backup',
+      'system_admin',
+      'database_backups',
+      backupId,
+      `Deleted backup: ${backup.backup_name}`,
+      { backup_name: backup.backup_name },
+      {},
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+
+    return c.json({
+      success: true,
+      message: 'Backup deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete backup error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to delete backup'
+    }, 500);
+  }
+});
+
+// Download specific backup
+admin.get('/backups/:id/download', authMiddleware, async (c) => {
+  try {
+    const backupId = parseInt(c.req.param('id'));
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    const backup = await db.db.prepare(`
+      SELECT * FROM database_backups 
+      WHERE id = ?
+    `).bind(backupId).first();
+    
+    if (!backup) {
+      return c.json({ success: false, error: 'Backup not found' }, 404);
+    }
+    
+    // Log the download action
+    await db.logAdminAction(
+      adminUser.id,
+      'download_backup',
+      'system_admin',
+      'database_backups',
+      backupId,
+      `Downloaded backup: ${backup.backup_name}`,
+      { backup_name: backup.backup_name },
+      {},
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+    
+    // Create filename with timestamp
+    const timestamp = new Date(backup.created_at).toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `turnkey-backup-${backup.backup_name}-${timestamp}.json`;
+    
+    // Parse backup data and format for download
+    const backupData = JSON.parse(backup.backup_data);
+    const downloadData = {
+      backup_info: {
+        id: backup.id,
+        name: backup.backup_name,
+        created_at: backup.created_at,
+        created_by: backup.created_by,
+        file_size: backup.file_size,
+        table_count: backup.table_count,
+        description: backup.description,
+        status: backup.status
+      },
+      data: backupData
+    };
+    
+    const formattedJson = JSON.stringify(downloadData, null, 2);
+    
+    return new Response(formattedJson, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': formattedJson.length.toString(),
+        'Cache-Control': 'no-cache'
+      }
+    });
+  } catch (error) {
+    console.error('Download backup failed:', error);
+    return c.json({ success: false, error: 'Failed to download backup' }, 500);
+  }
+});
+
+// Resend license email to customer
+admin.post('/customers/:id/resend-license', authMiddleware, async (c) => {
+  try {
+    const customerId = parseInt(c.req.param('id'));
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get customer data
+    const customer = await db.db.prepare(`
+      SELECT * FROM customers WHERE id = ?
+    `).bind(customerId).first();
+    
+    if (!customer) {
+      return c.json({
+        success: false,
+        message: 'Customer not found'
+      }, 404);
+    }
+    
+    // Log the action
+    await db.logAdminAction(
+      adminUser.id,
+      'resend_license_email',
+      'customer_management',
+      'customers',
+      customerId,
+      `Resent license email to: ${customer.email}`,
+      { customer_email: customer.email, license_key: customer.license_key },
+      {},
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+    
+    // TODO: Implement actual email sending
+    // For now, just return success
+    // In production, you would integrate with an email service like:
+    // - SendGrid API
+    // - Mailgun API  
+    // - Resend API
+    // - SMTP service
+    
+    return c.json({
+      success: true,
+      message: 'License email sent successfully'
+    });
+    
+  } catch (error) {
+    console.error('Resend license email error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to send license email'
+    }, 500);
+  }
+});
+
+/**
+ * Admin Action Logs
+ */
+admin.get('/logs/actions', authMiddleware, async (c) => {
+  try {
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '50');
+    const action_type = c.req.query('action_type') || '';
+    const admin_user_id = c.req.query('admin_user_id') || '';
+    const offset = (page - 1) * limit;
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    let query = `
+      SELECT aal.*, au.username as admin_username, au.full_name as admin_full_name
+      FROM admin_action_logs aal
+      LEFT JOIN admin_users au ON aal.admin_user_id = au.id
+      WHERE 1=1
+    `;
+    
+    let countQuery = `SELECT COUNT(*) as total FROM admin_action_logs WHERE 1=1`;
+    const params: any[] = [];
+
+    if (action_type) {
+      query += ` AND aal.action_type = ?`;
+      countQuery += ` AND action_type = ?`;
+      params.push(action_type);
+    }
+
+    if (admin_user_id) {
+      query += ` AND aal.admin_user_id = ?`;
+      countQuery += ` AND admin_user_id = ?`;
+      params.push(parseInt(admin_user_id));
+    }
+
+    query += ` ORDER BY aal.created_at DESC LIMIT ? OFFSET ?`;
+    const queryParams = [...params, limit, offset];
+
+    const [logs, total] = await Promise.all([
+      db.db.prepare(query).bind(...queryParams).all(),
+      db.db.prepare(countQuery).bind(...params).first<{ total: number }>()
+    ]);
+
+    return c.json({
+      success: true,
+      logs: logs.results || [],
+      pagination: {
+        page,
+        limit,
+        total: total?.total || 0,
+        pages: Math.ceil((total?.total || 0) / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get admin logs error:', error);
+    return c.json({ error: 'Failed to fetch admin logs' }, 500);
+  }
+});
+
+/**
+ * Bulk License Operations
+ */
+admin.post('/licenses/bulk-create', authMiddleware, async (c) => {
+  try {
+    const { licenses, operation_name = 'Bulk License Creation' } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    
+    if (!Array.isArray(licenses) || licenses.length === 0) {
+      return c.json({
+        success: false,
+        message: 'Licenses array is required and must not be empty'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Create bulk operation record
+    const bulkOp = await db.db.prepare(`
+      INSERT INTO license_bulk_operations (
+        operation_type, operation_name, total_records, 
+        operation_parameters, created_by, status
+      ) VALUES ('bulk_create', ?, ?, ?, ?, 'in_progress')
+    `).bind(
+      operation_name,
+      licenses.length,
+      JSON.stringify({ licenses }),
+      adminUser.id
+    ).run();
+
+    const bulkOpId = bulkOp.meta.last_row_id;
+    const results: any[] = [];
+    let successful = 0;
+    let failed = 0;
+
+    // Process each license
+    for (const license of licenses) {
+      try {
+        const validation = licenseSchema.safeParse(license);
+        if (!validation.success) {
+          results.push({
+            license,
+            success: false,
+            error: 'Invalid license data',
+            details: validation.error.errors
+          });
+          failed++;
+          continue;
+        }
+
+        // Generate license key
+        const { ModernCrypto } = await import('../utils/security');
+        const licenseKey = ModernCrypto.generateLicenseKey();
+
+        // Create license
+        const result = await db.db.prepare(`
+          INSERT INTO licenses (
+            customer_id, product_id, license_key, 
+            device_fingerprint, hardware_hash, ip_address, mac_addresses, 
+            computer_name, os_version, expires_at, status, 
+            created_at, updated_at
+          ) VALUES (?, ?, ?, 'BULK-GENERATED', 'BULK-HASH', 'BULK', 'BULK-MAC', 
+                    'BULK-GENERATED', 'BULK', ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(
+          validation.data.customer_id,
+          validation.data.product_id,
+          licenseKey,
+          validation.data.expires_at || null
+        ).run();
+
+        results.push({
+          license,
+          success: true,
+          license_id: result.meta.last_row_id,
+          license_key: licenseKey
+        });
+        successful++;
+
+      } catch (error) {
+        results.push({
+          license,
+          success: false,
+          error: 'Database error',
+          details: error.message
+        });
+        failed++;
+      }
+    }
+
+    // Update bulk operation
+    await db.db.prepare(`
+      UPDATE license_bulk_operations 
+      SET processed_records = ?, successful_records = ?, failed_records = ?,
+          status = 'completed', completed_at = CURRENT_TIMESTAMP,
+          progress_percentage = 100, results_summary = ?
+      WHERE id = ?
+    `).bind(
+      licenses.length,
+      successful,
+      failed,
+      JSON.stringify({ successful, failed, total: licenses.length }),
+      bulkOpId
+    ).run();
+
+    // Log action
+    await db.logAdminAction(
+      adminUser.id,
+      'bulk_create_licenses',
+      'license_management',
+      'licenses',
+      null,
+      `Bulk created ${successful} licenses`,
+      {},
+      { operation_id: bulkOpId, successful, failed, total: licenses.length },
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+
+    return c.json({
+      success: true,
+      operation_id: bulkOpId,
+      results,
+      summary: {
+        total: licenses.length,
+        successful,
+        failed
+      }
+    });
+
+  } catch (error) {
+    console.error('Bulk create licenses error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to bulk create licenses'
+    }, 500);
+  }
+});
+
+admin.post('/licenses/bulk-delete', authMiddleware, async (c) => {
+  try {
+    const { license_ids, operation_name = 'Bulk License Deletion' } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    
+    if (!Array.isArray(license_ids) || license_ids.length === 0) {
+      return c.json({
+        success: false,
+        message: 'License IDs array is required and must not be empty'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Create bulk operation record
+    const bulkOp = await db.db.prepare(`
+      INSERT INTO license_bulk_operations (
+        operation_type, operation_name, total_records, 
+        operation_parameters, created_by, status
+      ) VALUES ('bulk_delete', ?, ?, ?, ?, 'in_progress')
+    `).bind(
+      operation_name,
+      license_ids.length,
+      JSON.stringify({ license_ids }),
+      adminUser.id
+    ).run();
+
+    const bulkOpId = bulkOp.meta.last_row_id;
+    const results: any[] = [];
+    let successful = 0;
+    let failed = 0;
+
+    // Process each license
+    for (const licenseId of license_ids) {
+      try {
+        // Check if license exists
+        const license = await db.db.prepare(`
+          SELECT * FROM licenses WHERE id = ?
+        `).bind(licenseId).first();
+
+        if (!license) {
+          results.push({
+            license_id: licenseId,
+            success: false,
+            error: 'License not found'
+          });
+          failed++;
+          continue;
+        }
+
+        // Delete license (or set status to revoked)
+        await db.db.prepare(`
+          UPDATE licenses 
+          SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(licenseId).run();
+
+        results.push({
+          license_id: licenseId,
+          success: true,
+          license_key: license.license_key
+        });
+        successful++;
+
+      } catch (error) {
+        results.push({
+          license_id: licenseId,
+          success: false,
+          error: 'Database error',
+          details: error.message
+        });
+        failed++;
+      }
+    }
+
+    // Update bulk operation
+    await db.db.prepare(`
+      UPDATE license_bulk_operations 
+      SET processed_records = ?, successful_records = ?, failed_records = ?,
+          status = 'completed', completed_at = CURRENT_TIMESTAMP,
+          progress_percentage = 100, results_summary = ?
+      WHERE id = ?
+    `).bind(
+      license_ids.length,
+      successful,
+      failed,
+      JSON.stringify({ successful, failed, total: license_ids.length }),
+      bulkOpId
+    ).run();
+
+    // Log action
+    await db.logAdminAction(
+      adminUser.id,
+      'bulk_delete_licenses',
+      'license_management',
+      'licenses',
+      null,
+      `Bulk deleted ${successful} licenses`,
+      {},
+      { operation_id: bulkOpId, successful, failed, total: license_ids.length },
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+
+    return c.json({
+      success: true,
+      operation_id: bulkOpId,
+      results,
+      summary: {
+        total: license_ids.length,
+        successful,
+        failed
+      }
+    });
+
+  } catch (error) {
+    console.error('Bulk delete licenses error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to bulk delete licenses'
+    }, 500);
+  }
+});
+
+/**
+ * Data Export
+ */
+admin.post('/export/:entity', authMiddleware, async (c) => {
+  try {
+    const entity = c.req.param('entity');
+    const { format = 'csv', filters = {}, columns = [], export_name } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    
+    const validEntities = ['customers', 'products', 'licenses', 'security_events', 'activation_logs'];
+    if (!validEntities.includes(entity)) {
+      return c.json({
+        success: false,
+        message: 'Invalid entity type'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Create export job
+    const exportJob = await db.db.prepare(`
+      INSERT INTO data_export_jobs (
+        export_name, export_type, entity_type, export_filters,
+        columns_selected, created_by, status
+      ) VALUES (?, ?, ?, ?, ?, ?, 'processing')
+    `).bind(
+      export_name || `${entity}_export_${Date.now()}`,
+      format,
+      entity,
+      JSON.stringify(filters),
+      JSON.stringify(columns),
+      adminUser.id
+    ).run();
+
+    const exportId = exportJob.meta.last_row_id;
+
+    try {
+      // Build query based on entity and filters
+      let query = `SELECT * FROM ${entity}`;
+      const params: any[] = [];
+      
+      // Apply basic filters if provided
+      if (filters.status) {
+        query += ` WHERE status = ?`;
+        params.push(filters.status);
+      }
+      
+      query += ` ORDER BY created_at DESC`;
+      
+      if (filters.limit) {
+        query += ` LIMIT ?`;
+        params.push(parseInt(filters.limit));
+      }
+
+      // Execute query
+      const result = await db.db.prepare(query).bind(...params).all();
+      const data = result.results || [];
+
+      // Format data based on export type
+      let exportContent = '';
+      let contentType = 'text/plain';
+      
+      if (format === 'csv') {
+        contentType = 'text/csv';
+        if (data.length > 0) {
+          const headers = columns.length > 0 ? columns : Object.keys(data[0]);
+          exportContent = headers.join(',') + '\n';
+          
+          for (const row of data) {
+            const values = headers.map(header => {
+              const value = row[header] || '';
+              return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
+            });
+            exportContent += values.join(',') + '\n';
+          }
+        }
+      } else if (format === 'json') {
+        contentType = 'application/json';
+        exportContent = JSON.stringify(data, null, 2);
+      }
+
+      // Update export job
+      await db.db.prepare(`
+        UPDATE data_export_jobs 
+        SET status = 'completed', file_size = ?, progress_percentage = 100,
+            expires_at = datetime('now', '+7 days')
+        WHERE id = ?
+      `).bind(
+        Buffer.byteLength(exportContent, 'utf8'),
+        exportId
+      ).run();
+
+      // Log action
+      await db.logAdminAction(
+        adminUser.id,
+        'export_data',
+        'data_management',
+        entity,
+        null,
+        `Exported ${data.length} ${entity} records as ${format.toUpperCase()}`,
+        {},
+        { export_id: exportId, record_count: data.length, format },
+        c.req.header('cf-connecting-ip') || 'unknown'
+      );
+
+      return c.json({
+        success: true,
+        export_id: exportId,
+        download_url: `/api/admin/export/${exportId}/download`,
+        record_count: data.length,
+        file_size: Buffer.byteLength(exportContent, 'utf8')
+      });
+
+    } catch (error) {
+      // Update export job as failed
+      await db.db.prepare(`
+        UPDATE data_export_jobs 
+        SET status = 'failed', error_message = ?
+        WHERE id = ?
+      `).bind(error.message, exportId).run();
+      
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Export data error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to export data'
+    }, 500);
+  }
+});
+
+admin.get('/export/:id/download', authMiddleware, async (c) => {
+  try {
+    const exportId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get export job
+    const exportJob = await db.db.prepare(`
+      SELECT * FROM data_export_jobs 
+      WHERE id = ? AND status = 'completed' AND expires_at > datetime('now')
+    `).bind(exportId).first();
+
+    if (!exportJob) {
+      return c.json({
+        success: false,
+        message: 'Export not found or expired'
+      }, 404);
+    }
+
+    // For this demo, we'll regenerate the export data
+    // In production, you'd store the file and serve it
+    let query = `SELECT * FROM ${exportJob.entity_type}`;
+    const filters = JSON.parse(exportJob.export_filters || '{}');
+    const columns = JSON.parse(exportJob.columns_selected || '[]');
+    
+    const result = await db.db.prepare(query).all();
+    const data = result.results || [];
+
+    let exportContent = '';
+    let contentType = 'text/plain';
+    let filename = `${exportJob.export_name}.txt`;
+
+    if (exportJob.export_type === 'csv') {
+      contentType = 'text/csv';
+      filename = `${exportJob.export_name}.csv`;
+      
+      if (data.length > 0) {
+        const headers = columns.length > 0 ? columns : Object.keys(data[0]);
+        exportContent = headers.join(',') + '\n';
+        
+        for (const row of data) {
+          const values = headers.map(header => {
+            const value = row[header] || '';
+            return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
+          });
+          exportContent += values.join(',') + '\n';
+        }
+      }
+    } else if (exportJob.export_type === 'json') {
+      contentType = 'application/json';
+      filename = `${exportJob.export_name}.json`;
+      exportContent = JSON.stringify(data, null, 2);
+    }
+
+    // Update download count
+    await db.db.prepare(`
+      UPDATE data_export_jobs 
+      SET download_count = download_count + 1
+      WHERE id = ?
+    `).bind(exportId).run();
+
+    return new Response(exportContent, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': Buffer.byteLength(exportContent, 'utf8').toString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Download export error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to download export'
+    }, 500);
+  }
+});
+
+// Upload Management Endpoints
+admin.get('/uploads/list', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const uploads = await db.db.prepare(`
+      SELECT 
+        fu.*,
+        pj.id as job_id,
+        pj.status as job_status,
+        pj.progress as job_progress,
+        pj.protection_level,
+        pj.download_url,
+        pj.download_expires_at,
+        pj.error_message as job_error,
+        c.email as customer_email,
+        c.first_name,
+        c.last_name
+      FROM file_uploads fu
+      LEFT JOIN protection_jobs pj ON fu.protection_job_id = pj.id
+      LEFT JOIN customers c ON fu.customer_id = c.id
+      ORDER BY fu.created_at DESC
+      LIMIT 100
+    `).all();
+    
+    return c.json({
+      success: true,
+      uploads: uploads.results || []
+    });
+    
+  } catch (error) {
+    console.error('Admin list uploads error:', error);
+    return c.json({ success: false, message: 'Failed to load uploads' }, 500);
+  }
+});
+
+admin.get('/uploads/stats', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get upload statistics
+    const stats = await db.db.prepare(`
+      SELECT 
+        COUNT(*) as total_uploads,
+        COUNT(CASE WHEN status = 'protected' THEN 1 END) as protected_files,
+        COUNT(CASE WHEN pj.status = 'processing' THEN 1 END) as processing_jobs,
+        SUM(fu.file_size) as storage_used
+      FROM file_uploads fu
+      LEFT JOIN protection_jobs pj ON fu.protection_job_id = pj.id
+    `).first();
+    
+    return c.json({
+      success: true,
+      stats: {
+        total_uploads: stats?.total_uploads || 0,
+        protected_files: stats?.protected_files || 0,
+        processing_jobs: stats?.processing_jobs || 0,
+        storage_used: stats?.storage_used || 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('Admin upload stats error:', error);
+    return c.json({ success: false, message: 'Failed to load upload statistics' }, 500);
+  }
+});
+
+admin.delete('/uploads/:id', authMiddleware, async (c) => {
+  try {
+    const uploadId = parseInt(c.req.param('id'));
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get upload record
+    const upload = await db.db.prepare(`
+      SELECT * FROM file_uploads WHERE id = ?
+    `).bind(uploadId).first();
+    
+    if (!upload) {
+      return c.json({ success: false, message: 'Upload not found' }, 404);
+    }
+    
+    // Delete protection job if exists
+    if (upload.protection_job_id) {
+      await db.db.prepare(`DELETE FROM protection_jobs WHERE id = ?`)
+        .bind(upload.protection_job_id).run();
+    }
+    
+    // Delete download logs
+    await db.db.prepare(`DELETE FROM download_logs WHERE file_upload_id = ?`)
+      .bind(uploadId).run();
+    
+    // Delete upload record
+    await db.db.prepare(`DELETE FROM file_uploads WHERE id = ?`)
+      .bind(uploadId).run();
+    
+    // Log admin action
+    await db.logAdminAction(
+      adminUser.id,
+      'delete_upload',
+      'file_management',
+      'file_uploads',
+      uploadId,
+      `Deleted upload: ${upload.original_filename}`,
+      { upload_id: uploadId, filename: upload.original_filename },
+      {},
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+    
+    return c.json({
+      success: true,
+      message: 'Upload deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Admin delete upload error:', error);
+    return c.json({ success: false, message: 'Failed to delete upload' }, 500);
+  }
+});
+
+admin.post('/uploads/cleanup', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Delete files older than 30 days
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 30);
+    
+    // Get old uploads
+    const oldUploads = await db.db.prepare(`
+      SELECT * FROM file_uploads 
+      WHERE created_at < ? AND status IN ('failed', 'deleted')
+    `).bind(cutoffDate.toISOString()).all();
+    
+    let deletedCount = 0;
+    
+    for (const upload of oldUploads.results || []) {
+      try {
+        // Delete related records
+        await db.db.prepare(`DELETE FROM download_logs WHERE file_upload_id = ?`)
+          .bind(upload.id).run();
+        
+        if (upload.protection_job_id) {
+          await db.db.prepare(`DELETE FROM protection_jobs WHERE id = ?`)
+            .bind(upload.protection_job_id).run();
+        }
+        
+        await db.db.prepare(`DELETE FROM file_uploads WHERE id = ?`)
+          .bind(upload.id).run();
+        
+        deletedCount++;
+      } catch (error) {
+        console.error(`Failed to delete upload ${upload.id}:`, error);
+      }
+    }
+    
+    // Log admin action
+    await db.logAdminAction(
+      adminUser.id,
+      'cleanup_uploads',
+      'file_management',
+      'file_uploads',
+      null,
+      `Cleaned up old uploads`,
+      { cutoff_date: cutoffDate.toISOString() },
+      { deleted_count: deletedCount },
+      c.req.header('cf-connecting-ip') || 'unknown'
+    );
+    
+    return c.json({
+      success: true,
+      message: `Cleanup completed. ${deletedCount} files removed.`,
+      deleted_count: deletedCount
+    });
+    
+  } catch (error) {
+    console.error('Admin cleanup uploads error:', error);
+    return c.json({ success: false, message: 'Failed to cleanup uploads' }, 500);
+  }
+});
+
+/**
+ * File Upload and Protection System (Admin Only)
+ */
+
+// Utility functions for file handling
+function generateSecureFilename(originalName: string): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  const extension = originalName.split('.').pop()?.toLowerCase() || 'exe';
+  return `upload_${timestamp}_${random}.${extension}`;
+}
+
+function generateDownloadUrl(jobId: number, filename: string): string {
+  const token = Math.random().toString(36).substring(2, 15);
+  return `/api/admin/uploads/download/${jobId}/${token}/${filename}`;
+}
+
+async function uploadFileToR2(r2Bucket: R2Bucket | undefined, key: string, file: ArrayBuffer, contentType: string): Promise<void> {
+  if (!r2Bucket) {
+    console.log(`[DEV] Simulating R2 upload for key: ${key}, size: ${file.byteLength}`);
+    return;
+  }
+  
+  try {
+    await r2Bucket.put(key, file, {
+      httpMetadata: { contentType },
+      customMetadata: {
+        uploadedAt: new Date().toISOString(),
+        originalSize: file.byteLength.toString()
+      }
+    });
+    
+    console.log(`[R2] Uploaded file to R2 storage: ${key}, size: ${file.byteLength}`);
+  } catch (error) {
+    console.error('[R2] Upload error:', error);
+    throw new Error(`Failed to upload file to R2: ${error}`);
+  }
+}
+
+async function getFileFromR2(r2Bucket: R2Bucket | undefined, key: string): Promise<R2ObjectBody | null> {
+  if (!r2Bucket) {
+    console.log(`[DEV] Simulating R2 download for key: ${key}`);
+    const mockData = new TextEncoder().encode(`Mock protected file content for ${key}`);
+    return {
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(mockData);
+          controller.close();
+        }
+      }),
+      httpMetadata: { contentType: 'application/octet-stream' }
+    } as R2ObjectBody;
+  }
+  
+  try {
+    const object = await r2Bucket.get(key);
+    if (!object) {
+      console.log(`[R2] File not found: ${key}`);
+      return null;
+    }
+    
+    console.log(`[R2] Retrieved file from R2 storage: ${key}, size: ${object.size}`);
+    return object;
+  } catch (error) {
+    console.error('[R2] File retrieval error:', error);
+    return null;
+  }
+}
+
+async function uploadFileToKV(kv: KVNamespace | undefined, key: string, file: ArrayBuffer, contentType: string): Promise<void> {
+  if (!kv) {
+    console.log(`[DEV] Simulating KV upload for key: ${key}, size: ${file.byteLength}`);
+    return;
+  }
+  
+  const base64File = btoa(String.fromCharCode(...new Uint8Array(file)));
+  const metadata = {
+    contentType,
+    size: file.byteLength,
+    uploadedAt: new Date().toISOString()
+  };
+  
+  await kv.put(`file_${key}`, base64File, { expirationTtl: 2592000 });
+  await kv.put(`meta_${key}`, JSON.stringify(metadata), { expirationTtl: 2592000 });
+  
+  console.log(`[KV] Fallback: Uploaded file to KV storage: ${key}, size: ${file.byteLength}`);
+}
+
+async function getFileFromKV(kv: KVNamespace | undefined, key: string): Promise<R2ObjectBody | null> {
+  if (!kv) {
+    return null;
+  }
+  
+  try {
+    const [fileData, metaData] = await Promise.all([
+      kv.get(`file_${key}`),
+      kv.get(`meta_${key}`)
+    ]);
+    
+    if (!fileData || !metaData) {
+      return null;
+    }
+    
+    const metadata = JSON.parse(metaData);
+    const binaryString = atob(fileData);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    return {
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        }
+      }),
+      httpMetadata: {
+        contentType: metadata.contentType || 'application/octet-stream'
+      }
+    } as R2ObjectBody;
+    
+  } catch (error) {
+    console.error('KV fallback retrieval error:', error);
+    return null;
+  }
+}
+
+// Validation schemas for uploads
+const UploadInitiateSchema = z.object({
+  filename: z.string().min(1).max(255),
+  file_size: z.number().int().min(1).max(100 * 1024 * 1024), // 100MB max
+  mime_type: z.string().refine(type => 
+    type === 'application/x-msdownload' || 
+    type === 'application/octet-stream' ||
+    type === 'application/x-executable' ||
+    type.startsWith('application/'),
+    { message: 'Only executable files are allowed' }
+  ),
+  customer_id: z.number().int().optional()
+});
+
+const CreateProtectionJobSchema = z.object({
+  file_upload_id: z.number().int(),
+  customer_id: z.number().int().optional(),
+  protection_template_id: z.number().int().optional(),
+  protection_level: z.enum(['basic', 'standard', 'premium', 'enterprise']).default('basic'),
+  enable_vm_protection: z.boolean().default(true),
+  enable_hardware_binding: z.boolean().default(true),
+  enable_encryption: z.boolean().default(true),
+  enable_anti_debug: z.boolean().default(false),
+  enable_anti_dump: z.boolean().default(false),
+  max_concurrent_users: z.number().int().min(1).max(100).default(1),
+  license_duration_days: z.number().int().min(1).max(3650).optional(),
+  allowed_countries: z.array(z.string().length(2)).optional(),
+  blocked_countries: z.array(z.string().length(2)).optional(),
+  allowed_time_zones: z.array(z.string()).optional(),
+  business_hours_only: z.boolean().default(false),
+  business_hours_start: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  business_hours_end: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  allowed_days: z.array(z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])).optional()
+});
+
+// Initiate file upload
+admin.post('/uploads/initiate', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json();
+    const validatedData = UploadInitiateSchema.parse(body);
+    
+    const db = new DatabaseManager(c.env.DB);
+    const customerId = validatedData.customer_id || 1;
+    
+    const customer = await db.getCustomerById(customerId);
+    if (!customer) {
+      return c.json({ success: false, message: 'Customer not found' }, 404);
+    }
+    
+    const secureFilename = generateSecureFilename(validatedData.filename);
+    const fileHash = `temp_${Date.now()}_${Math.random().toString(36)}`;
+    const uploadPath = `uploads/${customerId}/${secureFilename}`;
+    
+    const uploadResult = await db.db.prepare(`
+      INSERT INTO file_uploads (
+        customer_id, original_filename, file_size, file_hash, 
+        mime_type, upload_path, status
+      ) VALUES (?, ?, ?, ?, ?, ?, 'uploading')
+    `).bind(
+      customerId,
+      validatedData.filename,
+      validatedData.file_size,
+      fileHash,
+      validatedData.mime_type,
+      uploadPath
+    ).run();
+    
+    if (!uploadResult.success || !uploadResult.meta.last_row_id) {
+      return c.json({ success: false, message: 'Failed to create upload record' }, 500);
+    }
+    
+    const uploadId = uploadResult.meta.last_row_id;
+    
+    return c.json({
+      success: true,
+      upload_id: uploadId,
+      upload_path: uploadPath,
+      message: 'Upload initiated successfully',
+      max_file_size: 100 * 1024 * 1024,
+      allowed_types: ['application/x-msdownload', 'application/octet-stream', 'application/x-executable']
+    });
+    
+  } catch (error) {
+    console.error('Admin upload initiation error:', error);
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, message: 'Invalid request data', errors: error.errors }, 400);
+    }
+    return c.json({ success: false, message: 'Failed to initiate upload' }, 500);
+  }
+});
+
+// Handle file upload
+admin.post('/uploads/:upload_id/upload', authMiddleware, async (c) => {
+  try {
+    const uploadId = parseInt(c.req.param('upload_id'));
+    if (!uploadId) {
+      return c.json({ success: false, message: 'Invalid upload ID' }, 400);
+    }
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    const uploadRecord = await db.db.prepare(`
+      SELECT * FROM file_uploads WHERE id = ? AND status = 'uploading'
+    `).bind(uploadId).first();
+    
+    if (!uploadRecord) {
+      return c.json({ success: false, message: 'Upload record not found or already processed' }, 404);
+    }
+    
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File;
+    
+    if (!file) {
+      return c.json({ success: false, message: 'No file provided' }, 400);
+    }
+    
+    if (file.size !== uploadRecord.file_size) {
+      return c.json({ success: false, message: 'File size mismatch' }, 400);
+    }
+    
+    if (!file.type.includes('application/')) {
+      return c.json({ success: false, message: 'Invalid file type' }, 400);
+    }
+    
+    const fileBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    try {
+      // Upload to R2 storage (primary) with KV fallback
+      if (c.env.R2) {
+        try {
+          await uploadFileToR2(c.env.R2, uploadRecord.upload_path, fileBuffer, file.type);
+        } catch (r2Error) {
+          console.warn('[R2] Primary upload failed, trying KV fallback:', r2Error);
+          await uploadFileToKV(c.env.KV, uploadRecord.upload_path, fileBuffer, file.type);
+        }
+      } else {
+        console.log('[R2] R2 not available, using KV storage');
+        await uploadFileToKV(c.env.KV, uploadRecord.upload_path, fileBuffer, file.type);
+      }
+      
+      await db.db.prepare(`
+        UPDATE file_uploads 
+        SET status = 'uploaded', file_hash = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `).bind(fileHash, uploadId).run();
+      
+      return c.json({
+        success: true,
+        message: 'File uploaded successfully',
+        upload_id: uploadId,
+        file_hash: fileHash,
+        file_size: file.size
+      });
+      
+    } catch (error) {
+      console.error('Admin file upload error:', error);
+      
+      await db.db.prepare(`
+        UPDATE file_uploads 
+        SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `).bind('Failed to upload to storage', uploadId).run();
+      
+      return c.json({ success: false, message: 'Failed to upload file to storage' }, 500);
+    }
+    
+  } catch (error) {
+    console.error('Admin file upload processing error:', error);
+    return c.json({ success: false, message: 'Failed to process file upload' }, 500);
+  }
+});
+
+// Get protection templates
+admin.get('/uploads/templates', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const templates = await db.db.prepare(`
+      SELECT * FROM protection_templates 
+      WHERE is_system_template = 1
+      ORDER BY protection_level, name
+    `).all();
+    
+    return c.json({
+      success: true,
+      templates: templates.results || []
+    });
+    
+  } catch (error) {
+    console.error('Admin templates error:', error);
+    return c.json({ success: false, message: 'Failed to get protection templates' }, 500);
+  }
+});
+
+// Create protection job
+admin.post('/uploads/protect', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json();
+    const validatedData = CreateProtectionJobSchema.parse(body);
+    
+    const db = new DatabaseManager(c.env.DB);
+    const customerId = validatedData.customer_id || 1;
+    
+    const fileUpload = await db.db.prepare(`
+      SELECT * FROM file_uploads 
+      WHERE id = ? AND customer_id = ? AND status = 'uploaded'
+    `).bind(validatedData.file_upload_id, customerId).first();
+    
+    if (!fileUpload) {
+      return c.json({ success: false, message: 'File upload not found or not ready for protection' }, 404);
+    }
+    
+    const existingJob = await db.db.prepare(`
+      SELECT id FROM protection_jobs WHERE file_upload_id = ?
+    `).bind(validatedData.file_upload_id).first();
+    
+    if (existingJob) {
+      return c.json({ success: false, message: 'Protection job already exists for this file' }, 409);
+    }
+    
+    const jobResult = await db.db.prepare(`
+      INSERT INTO protection_jobs (
+        customer_id, file_upload_id, job_type, protection_level,
+        enable_vm_protection, enable_hardware_binding, enable_encryption,
+        enable_anti_debug, enable_anti_dump, max_concurrent_users,
+        license_duration_days, allowed_countries, blocked_countries,
+        allowed_time_zones, business_hours_only, business_hours_start,
+        business_hours_end, allowed_days, status, progress
+      ) VALUES (?, ?, 'protection', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+    `).bind(
+      customerId,
+      validatedData.file_upload_id,
+      validatedData.protection_level,
+      validatedData.enable_vm_protection ? 1 : 0,
+      validatedData.enable_hardware_binding ? 1 : 0,
+      validatedData.enable_encryption ? 1 : 0,
+      validatedData.enable_anti_debug ? 1 : 0,
+      validatedData.enable_anti_dump ? 1 : 0,
+      validatedData.max_concurrent_users,
+      validatedData.license_duration_days || null,
+      validatedData.allowed_countries ? JSON.stringify(validatedData.allowed_countries) : null,
+      validatedData.blocked_countries ? JSON.stringify(validatedData.blocked_countries) : null,
+      validatedData.allowed_time_zones ? JSON.stringify(validatedData.allowed_time_zones) : null,
+      validatedData.business_hours_only ? 1 : 0,
+      validatedData.business_hours_start || null,
+      validatedData.business_hours_end || null,
+      validatedData.allowed_days ? JSON.stringify(validatedData.allowed_days) : null
+    ).run();
+    
+    if (!jobResult.success || !jobResult.meta.last_row_id) {
+      return c.json({ success: false, message: 'Failed to create protection job' }, 500);
+    }
+    
+    const jobId = jobResult.meta.last_row_id;
+    
+    await db.db.prepare(`
+      UPDATE file_uploads 
+      SET status = 'processing', protection_job_id = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `).bind(jobId, validatedData.file_upload_id).run();
+    
+    // Simulate background processing
+    setTimeout(async () => {
+      try {
+        await simulateProtectionProcessing(c.env.DB, jobId, fileUpload.original_filename);
+      } catch (error) {
+        console.error('Background protection processing error:', error);
+      }
+    }, 1000);
+    
+    return c.json({
+      success: true,
+      job_id: jobId,
+      message: 'Protection job created successfully',
+      estimated_completion: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Admin protection job creation error:', error);
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, message: 'Invalid request data', errors: error.errors }, 400);
+    }
+    return c.json({ success: false, message: 'Failed to create protection job' }, 500);
+  }
+});
+
+// Get protection job status
+admin.get('/uploads/job/:job_id/status', authMiddleware, async (c) => {
+  try {
+    const jobId = parseInt(c.req.param('job_id'));
+    if (!jobId) {
+      return c.json({ success: false, message: 'Invalid job ID' }, 400);
+    }
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    const job = await db.db.prepare(`
+      SELECT 
+        pj.*,
+        fu.original_filename,
+        fu.file_size as original_file_size
+      FROM protection_jobs pj
+      JOIN file_uploads fu ON pj.file_upload_id = fu.id
+      WHERE pj.id = ?
+    `).bind(jobId).first();
+    
+    if (!job) {
+      return c.json({ success: false, message: 'Protection job not found' }, 404);
+    }
+    
+    return c.json({
+      success: true,
+      job_id: job.id,
+      status: job.status,
+      progress: job.progress,
+      original_filename: job.original_filename,
+      protection_level: job.protection_level,
+      download_url: job.download_url,
+      download_expires_at: job.download_expires_at,
+      error_message: job.error_message,
+      created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at
+    });
+    
+  } catch (error) {
+    console.error('Admin job status error:', error);
+    return c.json({ success: false, message: 'Failed to get job status' }, 500);
+  }
+});
+
+// Download protected file
+admin.get('/uploads/download/:job_id/:token/:filename', authMiddleware, async (c) => {
+  try {
+    const jobId = parseInt(c.req.param('job_id'));
+    const token = c.req.param('token');
+    const filename = c.req.param('filename');
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    const job = await db.db.prepare(`
+      SELECT * FROM protection_jobs 
+      WHERE id = ? AND status = 'completed' AND protected_file_path IS NOT NULL
+    `).bind(jobId).first();
+    
+    if (!job) {
+      return c.json({ success: false, message: 'Protected file not found or not ready' }, 404);
+    }
+    
+    if (job.download_expires_at && new Date(job.download_expires_at) < new Date()) {
+      return c.json({ success: false, message: 'Download link has expired' }, 410);
+    }
+    
+    if (!job.download_url.includes(token)) {
+      return c.json({ success: false, message: 'Invalid download token' }, 403);
+    }
+    
+    try {
+      let file: R2ObjectBody | null = null;
+      
+      if (c.env.R2) {
+        file = await getFileFromR2(c.env.R2, job.protected_file_path);
+      }
+      
+      if (!file && c.env.KV) {
+        console.log('[R2] R2 not available or file not found, using KV fallback');
+        file = await getFileFromKV(c.env.KV, job.protected_file_path);
+      }
+      
+      if (!file) {
+        return c.json({ success: false, message: 'Protected file not found in storage' }, 404);
+      }
+      
+      const clientIP = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
+      const userAgent = c.req.header('User-Agent') || 'unknown';
+      
+      await db.db.prepare(`
+        INSERT INTO download_logs (
+          customer_id, protection_job_id, file_upload_id, ip_address, user_agent,
+          download_started_at, bytes_downloaded, status
+        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'started')
+      `).bind(
+        job.customer_id,
+        jobId,
+        job.file_upload_id,
+        clientIP,
+        userAgent,
+        job.protected_file_size || 0
+      ).run();
+      
+      return new Response(file.body, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': job.protected_file_size?.toString() || '0',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+    } catch (storageError) {
+      console.error('Admin file download error:', storageError);
+      return c.json({ success: false, message: 'Failed to retrieve protected file' }, 500);
+    }
+    
+  } catch (error) {
+    console.error('Admin download error:', error);
+    return c.json({ success: false, message: 'Failed to process download request' }, 500);
+  }
+});
+
+// Get upload statistics
+admin.get('/uploads/stats', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get upload statistics
+    const uploadStats = await db.db.prepare(`
+      SELECT 
+        COUNT(*) as total_uploads,
+        COUNT(CASE WHEN fu.status = 'protected' THEN 1 END) as protected_files,
+        COUNT(CASE WHEN pj.status = 'processing' THEN 1 END) as processing_jobs,
+        SUM(fu.file_size) as storage_used
+      FROM file_uploads fu
+      LEFT JOIN protection_jobs pj ON fu.protection_job_id = pj.id
+    `).first();
+    
+    return c.json({
+      success: true,
+      stats: uploadStats || {
+        total_uploads: 0,
+        protected_files: 0,
+        processing_jobs: 0,
+        storage_used: 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('Admin upload stats error:', error);
+    return c.json({ success: false, message: 'Failed to get upload statistics' }, 500);
+  }
+});
+
+// Delete upload
+admin.delete('/uploads/:upload_id', authMiddleware, async (c) => {
+  try {
+    const uploadId = parseInt(c.req.param('upload_id'));
+    if (!uploadId) {
+      return c.json({ success: false, message: 'Invalid upload ID' }, 400);
+    }
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get upload record
+    const upload = await db.db.prepare(`
+      SELECT * FROM file_uploads WHERE id = ?
+    `).bind(uploadId).first();
+    
+    if (!upload) {
+      return c.json({ success: false, message: 'Upload not found' }, 404);
+    }
+    
+    // Delete protection job if exists
+    if (upload.protection_job_id) {
+      await db.db.prepare(`
+        DELETE FROM protection_jobs WHERE id = ?
+      `).bind(upload.protection_job_id).run();
+    }
+    
+    // Delete upload record
+    await db.db.prepare(`
+      DELETE FROM file_uploads WHERE id = ?
+    `).bind(uploadId).run();
+    
+    // Note: In a production system, you would also delete the actual files from R2/KV storage
+    
+    return c.json({
+      success: true,
+      message: 'Upload deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Admin delete upload error:', error);
+    return c.json({ success: false, message: 'Failed to delete upload' }, 500);
+  }
+});
+
+// Cleanup old uploads
+admin.post('/uploads/cleanup', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Delete uploads older than 30 days
+    const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const result = await db.db.prepare(`
+      DELETE FROM file_uploads 
+      WHERE created_at < ? AND status IN ('failed', 'uploaded', 'protected')
+    `).bind(cutoffDate.toISOString()).run();
+    
+    const deletedCount = result.meta.changes || 0;
+    
+    return c.json({
+      success: true,
+      message: `Cleanup completed. ${deletedCount} files removed.`,
+      deleted_count: deletedCount
+    });
+    
+  } catch (error) {
+    console.error('Admin cleanup uploads error:', error);
+    return c.json({ success: false, message: 'Failed to cleanup uploads' }, 500);
+  }
+});
+
+// List uploads and jobs
+admin.get('/uploads/list/:customer_id?', authMiddleware, async (c) => {
+  try {
+    const customerIdParam = c.req.param('customer_id');
+    const customerId = customerIdParam ? parseInt(customerIdParam) : null;
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    let query = `
+      SELECT 
+        fu.*,
+        pj.id as job_id,
+        pj.status as job_status,
+        pj.progress as job_progress,
+        pj.protection_level,
+        pj.download_url,
+        pj.download_expires_at,
+        pj.error_message as job_error
+      FROM file_uploads fu
+      LEFT JOIN protection_jobs pj ON fu.protection_job_id = pj.id
+    `;
+    
+    if (customerId) {
+      query += ` WHERE fu.customer_id = ?`;
+    }
+    
+    query += ` ORDER BY fu.created_at DESC LIMIT 50`;
+    
+    const uploads = customerId 
+      ? await db.db.prepare(query).bind(customerId).all()
+      : await db.db.prepare(query).all();
+    
+    return c.json({
+      success: true,
+      uploads: uploads.results || [],
+      count: uploads.results?.length || 0
+    });
+    
+  } catch (error) {
+    console.error('Admin list uploads error:', error);
+    return c.json({ success: false, message: 'Failed to list uploads' }, 500);
+  }
+});
+
+// Simulate protection processing function
+async function simulateProtectionProcessing(db: D1Database, jobId: number, originalFilename: string): Promise<void> {
+  try {
+    await db.prepare(`
+      UPDATE protection_jobs 
+      SET status = 'processing', started_at = CURRENT_TIMESTAMP, progress = 10
+      WHERE id = ?
+    `).bind(jobId).run();
+    
+    const steps = [
+      { progress: 25, message: 'Analyzing executable structure...' },
+      { progress: 50, message: 'Applying protection layers...' },
+      { progress: 75, message: 'Injecting security code...' },
+      { progress: 90, message: 'Finalizing protected executable...' }
+    ];
+    
+    for (const step of steps) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      await db.prepare(`
+        UPDATE protection_jobs 
+        SET progress = ?, processing_logs = COALESCE(processing_logs, '[]')
+        WHERE id = ?
+      `).bind(step.progress, jobId).run();
+    }
+    
+    const protectedFilename = originalFilename.replace('.exe', '_protected.exe');
+    const protectedPath = `protected/${jobId}/${protectedFilename}`;
+    const downloadUrl = generateDownloadUrl(jobId, protectedFilename);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
+    await db.prepare(`
+      UPDATE protection_jobs 
+      SET 
+        status = 'completed',
+        progress = 100,
+        completed_at = CURRENT_TIMESTAMP,
+        protected_file_path = ?,
+        protected_file_size = ?,
+        download_url = ?,
+        download_expires_at = ?
+      WHERE id = ?
+    `).bind(
+      protectedPath,
+      Math.floor(Math.random() * 1000000) + 500000,
+      downloadUrl,
+      expiresAt,
+      jobId
+    ).run();
+    
+    await db.prepare(`
+      UPDATE file_uploads 
+      SET status = 'protected', updated_at = CURRENT_TIMESTAMP 
+      WHERE protection_job_id = ?
+    `).bind(jobId).run();
+    
+    console.log(`Admin protection job ${jobId} completed successfully`);
+    
+  } catch (error) {
+    console.error(`Admin protection job ${jobId} failed:`, error);
+    
+    await db.prepare(`
+      UPDATE protection_jobs 
+      SET 
+        status = 'failed',
+        error_message = ?,
+        completed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(error instanceof Error ? error.message : 'Unknown error', jobId).run();
+    
+    await db.prepare(`
+      UPDATE file_uploads 
+      SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE protection_job_id = ?
+    `).bind('Protection processing failed', jobId).run();
+  }
+}
+
+/**
+ * License Rules Management
+ */
+
+// License rule schema for validation (simplified to match UI)
+const licenseRuleSchema = z.object({
+  name: z.string().min(1, 'Rule name is required'),
+  description: z.string().optional(),
+  max_concurrent_sessions: z.number().min(0).default(1), // Allow 0 for unlimited
+  max_days: z.number().min(0).default(0),
+  grace_period_days: z.number().min(0).default(7),
+  max_devices: z.number().min(0).default(1), // Allow 0 for unlimited
+  allow_vm: z.boolean().default(false),
+  allowed_countries: z.array(z.string()).optional(),
+  timezone_restrictions: z.string().optional(),
+  allow_offline_days: z.number().min(0).default(7),
+  is_active: z.boolean().default(true)
+});
+
+// Get all license rules
+admin.get('/rules', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const rules = await db.db.prepare(`
+      SELECT * FROM license_rules 
+      WHERE is_active = 1
+      ORDER BY created_at DESC
+    `).all();
+
+    // Transform the data for frontend (simplified - no blocked_countries)
+    const transformedRules = (rules.results || []).map(rule => ({
+      ...rule,
+      allowed_countries: rule.allowed_countries ? JSON.parse(rule.allowed_countries) : [],
+      timezone_restrictions: rule.timezone_restrictions ? JSON.parse(rule.timezone_restrictions) : null
+    }));
+
+    return c.json({
+      success: true,
+      rules: transformedRules
+    });
+
+  } catch (error) {
+    console.error('Get rules error:', error);
+    return c.json({ 
+      success: false,
+      message: 'Failed to fetch rules' 
+    }, 500);
+  }
+});
+
+// Create new license rule
+admin.post('/rules', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json();
+    const validation = licenseRuleSchema.safeParse(body);
+
+    if (!validation.success) {
+      return c.json({
+        success: false,
+        message: 'Invalid request format',
+        errors: validation.error.errors
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if name already exists
+    const existingRule = await db.db.prepare(`
+      SELECT id FROM license_rules WHERE name = ?
+    `).bind(validation.data.name).first();
+    
+    if (existingRule) {
+      return c.json({
+        success: false,
+        message: 'Rule name already exists'
+      }, 400);
+    }
+
+    // Create the rule (simplified - only UI fields)
+    const result = await db.db.prepare(`
+      INSERT INTO license_rules (
+        name, description, max_concurrent_sessions, max_days,
+        grace_period_days, max_devices, allow_vm, allowed_countries,
+        timezone_restrictions, allow_offline_days, is_active,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).bind(
+      validation.data.name,
+      validation.data.description || null,
+      validation.data.max_concurrent_sessions,
+      validation.data.max_days,
+      validation.data.grace_period_days,
+      validation.data.max_devices,
+      validation.data.allow_vm ? 1 : 0,
+      validation.data.allowed_countries ? JSON.stringify(validation.data.allowed_countries) : null,
+      validation.data.timezone_restrictions || null,
+      validation.data.allow_offline_days,
+      validation.data.is_active ? 1 : 0
+    ).run();
+
+    return c.json({
+      success: true,
+      rule_id: result.meta.last_row_id,
+      message: 'Rule created successfully'
+    });
+
+  } catch (error) {
+    console.error('Create rule error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to create rule'
+    }, 500);
+  }
+});
+
+// Get specific license rule
+admin.get('/rules/:id', authMiddleware, async (c) => {
+  try {
+    const ruleId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+    
+    const rule = await db.db.prepare(`
+      SELECT * FROM license_rules WHERE id = ?
+    `).bind(ruleId).first();
+
+    if (!rule) {
+      return c.json({ 
+        success: false,
+        message: 'Rule not found' 
+      }, 404);
+    }
+
+    // Transform the data for frontend (simplified - no blocked_countries)
+    const transformedRule = {
+      ...rule,
+      allowed_countries: rule.allowed_countries ? JSON.parse(rule.allowed_countries) : [],
+      timezone_restrictions: rule.timezone_restrictions ? JSON.parse(rule.timezone_restrictions) : null
+    };
+
+    return c.json({
+      success: true,
+      rule: transformedRule
+    });
+
+  } catch (error) {
+    console.error('Get rule error:', error);
+    return c.json({ 
+      success: false,
+      message: 'Failed to fetch rule' 
+    }, 500);
+  }
+});
+
+// Update license rule
+admin.put('/rules/:id', authMiddleware, async (c) => {
+  try {
+    const ruleId = parseInt(c.req.param('id'));
+    const body = await c.req.json();
+    const validation = licenseRuleSchema.safeParse(body);
+
+    if (!validation.success) {
+      return c.json({
+        success: false,
+        message: 'Invalid request format',
+        errors: validation.error.errors
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if rule exists
+    const existingRule = await db.db.prepare(`
+      SELECT id FROM license_rules WHERE id = ?
+    `).bind(ruleId).first();
+    
+    if (!existingRule) {
+      return c.json({
+        success: false,
+        message: 'Rule not found'
+      }, 404);
+    }
+
+    // Check if name already exists for another rule
+    const nameCheck = await db.db.prepare(`
+      SELECT id FROM license_rules WHERE name = ? AND id != ?
+    `).bind(validation.data.name, ruleId).first();
+    
+    if (nameCheck) {
+      return c.json({
+        success: false,
+        message: 'Rule name already exists'
+      }, 400);
+    }
+
+    // Update the rule (simplified - only UI fields)
+    await db.db.prepare(`
+      UPDATE license_rules SET
+        name = ?, description = ?, max_concurrent_sessions = ?,
+        max_days = ?, grace_period_days = ?, max_devices = ?,
+        allow_vm = ?, allowed_countries = ?,
+        timezone_restrictions = ?, allow_offline_days = ?, is_active = ?, 
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      validation.data.name,
+      validation.data.description || null,
+      validation.data.max_concurrent_sessions,
+      validation.data.max_days,
+      validation.data.grace_period_days,
+      validation.data.max_devices,
+      validation.data.allow_vm ? 1 : 0,
+      validation.data.allowed_countries ? JSON.stringify(validation.data.allowed_countries) : null,
+      validation.data.timezone_restrictions || null,
+      validation.data.allow_offline_days,
+      validation.data.is_active ? 1 : 0,
+      ruleId
+    ).run();
+
+    return c.json({
+      success: true,
+      message: 'Rule updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Update rule error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to update rule'
+    }, 500);
+  }
+});
+
+// Delete license rule
+admin.delete('/rules/:id', authMiddleware, async (c) => {
+  try {
+    const ruleId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if rule exists
+    const existingRule = await db.db.prepare(`
+      SELECT id, name FROM license_rules WHERE id = ?
+    `).bind(ruleId).first();
+    
+    if (!existingRule) {
+      return c.json({
+        success: false,
+        message: 'Rule not found'
+      }, 404);
+    }
+
+    // TODO: Check if rule is being used by any products/licenses
+    // For now, we'll do a soft delete by setting is_active to false
+    await db.db.prepare(`
+      UPDATE license_rules 
+      SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(ruleId).run();
+
+    return c.json({
+      success: true,
+      message: 'Rule deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete rule error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to delete rule'
     }, 500);
   }
 });

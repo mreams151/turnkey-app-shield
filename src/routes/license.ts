@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 import type { AppContext, ValidateLicenseRequest, ValidateLicenseResponse } from '../types/database';
 import { DatabaseManager } from '../utils/database';
-import { SecurityValidator, RateLimiter } from '../utils/security';
+import { SecurityValidator, RateLimiter, VMDetector } from '../utils/security';
 
 const license = new Hono<AppContext>();
 
@@ -41,6 +41,24 @@ const createLicenseSchema = z.object({
  * Validate License - Core endpoint replacing WCF ValidateLicense
  * Enhanced with modern security features, rate limiting, and detailed logging
  */
+// Helper function to detect country from IP address
+async function detectCountryFromIP(ip: string): Promise<string> {
+  // For development/testing, return a default country
+  if (ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    return 'US'; // Default for local IPs
+  }
+
+  try {
+    // Use a free IP geolocation service (in production, consider paid services)
+    const response = await fetch(`http://ip-api.com/json/${ip}?fields=countryCode`);
+    const data = await response.json();
+    return data.countryCode || 'US'; // Default to US if detection fails
+  } catch (error) {
+    console.warn('IP geolocation failed:', error);
+    return 'US'; // Default fallback
+  }
+}
+
 license.post('/validate', async (c) => {
   const startTime = Date.now();
   let db: DatabaseManager | null = null;
@@ -109,14 +127,17 @@ license.post('/validate', async (c) => {
       };
       
       await db.logActivation({
-        ...logData,
-        license_id: 0,
         customer_id: 0,
         product_id: 0,
+        license_key: request.license_key,
+        device_fingerprint: request.hardware_fingerprint,
         ip_address: clientIP,
         user_agent: c.req.header('user-agent') || null,
-        device_fingerprint: request.hardware_fingerprint,
-        hardware_changes: null,
+        device_name: request.computer_name,
+        operating_system: request.os_version,
+        file_name: 'license_validation',
+        status: 'invalid',
+        error_message: 'Invalid license key format',
         response_time: Date.now() - startTime
       });
 
@@ -166,11 +187,19 @@ license.post('/validate', async (c) => {
 
     // Log activation attempt
     const validationId = await db.logActivation({
-      ...logData,
+      customer_id: logData.customer_id,
+      product_id: logData.product_id,
+      license_key: request.license_key,
+      device_fingerprint: request.hardware_fingerprint,
       ip_address: clientIP,
       user_agent: c.req.header('user-agent') || null,
-      device_fingerprint: request.hardware_fingerprint,
-      hardware_changes: null,
+      device_name: request.computer_name,
+      operating_system: request.os_version,
+      file_name: 'license_validation', 
+      status: validation.valid ? 'valid' : 'invalid',
+      session_id: logData.session_id || null,
+      session_duration: 0,
+      error_message: validation.valid ? null : validation.message,
       response_time: Date.now() - startTime
     });
 
@@ -212,8 +241,378 @@ license.post('/validate', async (c) => {
       } as ValidateLicenseResponse, 200);
     }
 
-    // Successful validation - check for updates
+    // Successful validation - check for VM restrictions
     const product = await db.getProductById(validation.license!.product_id);
+    
+    // Check if VM protection is enabled for this license
+    if (product?.rule_id) {
+      const licenseRule = await db.db.prepare(`
+        SELECT allow_vm FROM license_rules WHERE id = ?
+      `).bind(product.rule_id).first<{ allow_vm: boolean }>();
+
+      if (licenseRule && !licenseRule.allow_vm) {
+        // VM protection is enabled - perform VM detection
+        const vmDetectionResult = VMDetector.isVirtualMachine({
+          computerName: request.computer_name,
+          osVersion: request.os_version,
+          processorInfo: undefined, // Will be enhanced when client sends this data
+          diskInfo: undefined,      // Will be enhanced when client sends this data
+          macAddresses: request.mac_addresses,
+          biosInfo: undefined,      // Will be enhanced when client sends this data
+          motherboardInfo: undefined // Will be enhanced when client sends this data
+        });
+
+        if (vmDetectionResult.isVM) {
+          // Log VM detection security event
+          await db.logSecurityEvent({
+            event_type: 'vm_detected',
+            severity: 'high',
+            customer_id: validation.license!.customer_id,
+            license_id: validation.license!.id,
+            ip_address: clientIP,
+            description: `Virtual machine usage blocked for license ${request.license_key}`,
+            metadata: JSON.stringify({
+              vm_type: vmDetectionResult.vmType,
+              confidence: vmDetectionResult.confidence,
+              indicators: vmDetectionResult.indicators,
+              computer_name: request.computer_name,
+              mac_addresses: request.mac_addresses
+            }),
+            resolved: false
+          });
+
+          // Block the validation
+          return c.json({
+            valid: false,
+            status: 'blocked',
+            message: `License cannot be used in virtual machines. ${VMDetector.getVMDetectionSummary(vmDetectionResult)}`,
+            server_time: new Date().toISOString()
+          } as ValidateLicenseResponse, 403);
+        }
+
+        // Log successful VM check for audit trail
+        await db.logSecurityEvent({
+          event_type: 'vm_check_passed',
+          severity: 'low',
+          customer_id: validation.license!.customer_id,
+          license_id: validation.license!.id,
+          ip_address: clientIP,
+          description: `VM protection check passed for license ${request.license_key}`,
+          metadata: JSON.stringify({
+            confidence: vmDetectionResult.confidence,
+            computer_name: request.computer_name
+          }),
+          resolved: true
+        });
+      }
+    }
+
+    // Check all rule-based restrictions (devices, sessions, offline validation, duration)
+    if (product?.rule_id) {
+      const licenseRule = await db.db.prepare(`
+        SELECT max_concurrent_sessions, max_devices, allow_offline_days, 
+               max_days, grace_period_days
+        FROM license_rules WHERE id = ?
+      `).bind(product.rule_id).first<{ 
+        max_concurrent_sessions: number; 
+        max_devices: number; 
+        allow_offline_days: number;
+        max_days: number;
+        grace_period_days: number;
+      }>();
+
+      if (licenseRule) {
+        // 1. Check device limit (max_devices enforcement)
+        if (licenseRule.max_devices > 0) {
+          const uniqueDevices = await db.db.prepare(`
+            SELECT COUNT(DISTINCT device_fingerprint) as count FROM activation_logs 
+            WHERE license_key = ? AND status = 'valid'
+          `).bind(request.license_key).first<{ count: number }>();
+
+          if (uniqueDevices && uniqueDevices.count >= licenseRule.max_devices) {
+            // Check if current device is already registered
+            const existingDevice = await db.db.prepare(`
+              SELECT id FROM activation_logs 
+              WHERE license_key = ? AND device_fingerprint = ? AND status = 'valid'
+              LIMIT 1
+            `).bind(request.license_key, request.hardware_fingerprint).first();
+
+            if (!existingDevice) {
+              await db.logSecurityEvent({
+                event_type: 'device_limit_exceeded',
+                severity: 'medium',
+                customer_id: validation.license!.customer_id,
+                license_id: validation.license!.id,
+                ip_address: clientIP,
+                description: `Device limit exceeded for license ${request.license_key}`,
+                metadata: JSON.stringify({
+                  current_devices: uniqueDevices.count,
+                  max_allowed: licenseRule.max_devices,
+                  attempted_device: request.hardware_fingerprint
+                }),
+                resolved: false
+              });
+
+              return c.json({
+                valid: false,
+                status: 'device_limit_exceeded',
+                message: `License device limit exceeded. Maximum ${licenseRule.max_devices} devices allowed.`,
+                server_time: new Date().toISOString()
+              } as ValidateLicenseResponse, 403);
+            }
+          }
+        }
+
+        // 2. Check offline validation limit (allow_offline_days enforcement)
+        if (licenseRule.allow_offline_days >= 0) {
+          const lastOnlineValidation = await db.db.prepare(`
+            SELECT MAX(created_at) as last_validation FROM activation_logs 
+            WHERE license_key = ? AND status = 'valid'
+          `).bind(request.license_key).first<{ last_validation: string | null }>();
+
+          if (lastOnlineValidation?.last_validation) {
+            const daysSinceLastValidation = Math.floor(
+              (Date.now() - new Date(lastOnlineValidation.last_validation).getTime()) / (1000 * 60 * 60 * 24)
+            );
+
+            if (daysSinceLastValidation > licenseRule.allow_offline_days) {
+              await db.logSecurityEvent({
+                event_type: 'offline_limit_exceeded',
+                severity: 'medium',
+                customer_id: validation.license!.customer_id,
+                license_id: validation.license!.id,
+                ip_address: clientIP,
+                description: `Offline validation limit exceeded for license ${request.license_key}`,
+                metadata: JSON.stringify({
+                  days_since_last_validation: daysSinceLastValidation,
+                  max_offline_days: licenseRule.allow_offline_days,
+                  last_validation: lastOnlineValidation.last_validation
+                }),
+                resolved: false
+              });
+
+              return c.json({
+                valid: false,
+                status: 'offline_limit_exceeded',
+                message: `License requires online validation. Maximum ${licenseRule.allow_offline_days} days offline allowed. Last validation: ${Math.floor(daysSinceLastValidation)} days ago.`,
+                server_time: new Date().toISOString()
+              } as ValidateLicenseResponse, 403);
+            }
+          }
+        }
+
+        // 3. Check license duration and grace period (max_days enforcement)
+        if (licenseRule.max_days > 0) {
+          // Calculate license age from first activation
+          const firstActivation = await db.db.prepare(`
+            SELECT MIN(created_at) as first_activation FROM activation_logs 
+            WHERE license_key = ? AND status = 'valid'
+          `).bind(request.license_key).first<{ first_activation: string | null }>();
+
+          if (firstActivation?.first_activation) {
+            const daysSinceFirstActivation = Math.floor(
+              (Date.now() - new Date(firstActivation.first_activation).getTime()) / (1000 * 60 * 60 * 24)
+            );
+            
+            const totalAllowedDays = licenseRule.max_days + licenseRule.grace_period_days;
+
+            if (daysSinceFirstActivation > totalAllowedDays) {
+              await db.logSecurityEvent({
+                event_type: 'license_duration_exceeded',
+                severity: 'high',
+                customer_id: validation.license!.customer_id,
+                license_id: validation.license!.id,
+                ip_address: clientIP,
+                description: `License duration exceeded for ${request.license_key}`,
+                metadata: JSON.stringify({
+                  days_since_first_activation: daysSinceFirstActivation,
+                  max_days: licenseRule.max_days,
+                  grace_period_days: licenseRule.grace_period_days,
+                  total_allowed_days: totalAllowedDays
+                }),
+                resolved: false
+              });
+
+              return c.json({
+                valid: false,
+                status: 'license_expired',
+                message: `License has expired. Duration: ${licenseRule.max_days} days + ${licenseRule.grace_period_days} grace period. Current usage: ${daysSinceFirstActivation} days.`,
+                server_time: new Date().toISOString()
+              } as ValidateLicenseResponse, 403);
+            }
+          }
+        }
+
+        // 4. Check concurrent session limit
+        if (licenseRule.max_concurrent_sessions > 0) {
+          // Generate unique session ID for this activation
+          const sessionId = `${validation.license!.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+          // Count active sessions (sessions from last 5 minutes are considered active)
+          const activeSessions = await db.db.prepare(`
+            SELECT COUNT(DISTINCT session_id) as count 
+            FROM activation_logs 
+            WHERE license_key = ? 
+            AND status = 'valid'
+            AND session_id IS NOT NULL
+            AND activation_time > datetime('now', '-5 minutes')
+          `).bind(request.license_key).first<{ count: number }>();
+
+          if (activeSessions && activeSessions.count >= licenseRule.max_concurrent_sessions) {
+            // Log concurrent session limit exceeded
+            await db.logSecurityEvent({
+              event_type: 'concurrent_session_limit_exceeded',
+              severity: 'medium',
+              customer_id: validation.license!.customer_id,
+              license_id: validation.license!.id,
+              ip_address: clientIP,
+              description: `Concurrent session limit exceeded for license ${request.license_key}`,
+              metadata: JSON.stringify({
+                active_sessions: activeSessions.count,
+                max_allowed: licenseRule.max_concurrent_sessions,
+                device_fingerprint: request.hardware_fingerprint,
+                attempted_session_id: sessionId
+              }),
+              resolved: false
+            });
+
+            return c.json({
+              valid: false,
+              status: 'concurrent_limit_exceeded',
+              message: `Too many concurrent sessions. Maximum ${licenseRule.max_concurrent_sessions} concurrent sessions allowed.`,
+              server_time: new Date().toISOString()
+            } as ValidateLicenseResponse, 403);
+          }
+
+          // Store the session ID for this successful activation
+          logData.session_id = sessionId;
+        }
+      }
+    }
+
+    // Check geographic and time-based restrictions
+    if (product?.rule_id) {
+      const licenseRule = await db.db.prepare(`
+        SELECT allowed_countries, timezone_restrictions 
+        FROM license_rules WHERE id = ?
+      `).bind(product.rule_id).first<{ 
+        allowed_countries: string | null; 
+        timezone_restrictions: string | null;
+      }>();
+
+      if (licenseRule) {
+        // 1. Geographic restrictions (whitelist-only approach)
+        const allowedCountries = licenseRule.allowed_countries ? JSON.parse(licenseRule.allowed_countries) : null;
+
+        // Get country from IP
+        const userCountry = await detectCountryFromIP(clientIP);
+
+        if (allowedCountries && allowedCountries.length > 0) {
+          // Whitelist mode: only allow specific countries
+          if (!allowedCountries.includes(userCountry)) {
+            await db.logSecurityEvent({
+              event_type: 'geographic_restriction_violation',
+              severity: 'medium',
+              customer_id: validation.license!.customer_id,
+              license_id: validation.license!.id,
+              ip_address: clientIP,
+              description: `License used from unauthorized country: ${userCountry}`,
+              metadata: JSON.stringify({
+                user_country: userCountry,
+                allowed_countries: allowedCountries,
+                license_key: request.license_key
+              }),
+              resolved: false
+            });
+
+            return c.json({
+              valid: false,
+              status: 'geographic_restriction',
+              message: `License cannot be used from ${userCountry}. Allowed countries: ${allowedCountries.join(', ')}`,
+              server_time: new Date().toISOString()
+            } as ValidateLicenseResponse, 403);
+          }
+        }
+
+        // Note: blocked_countries enforcement removed - UI simplified to whitelist-only approach
+        // This maintains backward compatibility while aligning with simplified UI
+
+        // 2. Time-based restrictions
+        if (licenseRule.timezone_restrictions) {
+          const timeRestrictions = JSON.parse(licenseRule.timezone_restrictions);
+          const now = new Date();
+          const currentHour = now.getHours();
+          const currentMinute = now.getMinutes();
+          const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          const currentTime = currentHour * 60 + currentMinute; // Minutes since midnight
+
+          if (timeRestrictions.business_hours) {
+            const { start, end, allowed_days } = timeRestrictions.business_hours;
+            
+            // Parse start/end times (format: "HH:MM")
+            const [startHour, startMinute] = start.split(':').map(Number);
+            const [endHour, endMinute] = end.split(':').map(Number);
+            const startTime = startHour * 60 + startMinute;
+            const endTime = endHour * 60 + endMinute;
+
+            // Check if current day is allowed
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const currentDayName = dayNames[currentDay];
+            
+            if (!allowed_days.includes(currentDayName)) {
+              await db.logSecurityEvent({
+                event_type: 'time_restriction_violation',
+                severity: 'low',
+                customer_id: validation.license!.customer_id,
+                license_id: validation.license!.id,
+                ip_address: clientIP,
+                description: `License used outside allowed days: ${currentDayName}`,
+                metadata: JSON.stringify({
+                  current_day: currentDayName,
+                  allowed_days: allowed_days,
+                  current_time: `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`
+                }),
+                resolved: false
+              });
+
+              return c.json({
+                valid: false,
+                status: 'time_restriction',
+                message: `License cannot be used on ${currentDayName}. Allowed days: ${allowed_days.join(', ')}`,
+                server_time: new Date().toISOString()
+              } as ValidateLicenseResponse, 403);
+            }
+
+            // Check if current time is within allowed hours
+            if (currentTime < startTime || currentTime > endTime) {
+              await db.logSecurityEvent({
+                event_type: 'time_restriction_violation',
+                severity: 'low',
+                customer_id: validation.license!.customer_id,
+                license_id: validation.license!.id,
+                ip_address: clientIP,
+                description: `License used outside business hours`,
+                metadata: JSON.stringify({
+                  current_time: `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`,
+                  allowed_hours: `${start} - ${end}`,
+                  current_day: currentDayName
+                }),
+                resolved: false
+              });
+
+              return c.json({
+                valid: false,
+                status: 'time_restriction',
+                message: `License can only be used during business hours: ${start} - ${end}`,
+                server_time: new Date().toISOString()
+              } as ValidateLicenseResponse, 403);
+            }
+          }
+        }
+      }
+    }
+
+    // Check for product updates
     let updateAvailable = false;
     let updateUrl = null;
 
