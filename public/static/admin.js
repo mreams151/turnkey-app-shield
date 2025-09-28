@@ -1931,11 +1931,17 @@ class AdminPanel {
             
             if (response.success) {
                 this.showNotification('Landing page regenerated successfully!', 'success');
-                // Refresh the current view if we're on the edit page
-                const currentUrl = window.location.hash;
-                if (currentUrl.includes('edit')) {
-                    this.editProduct(productId);
+                
+                // Update the landing page URL field in the edit form
+                const landingUrlField = document.getElementById('edit-product-landing-url');
+                if (landingUrlField && response.landing_page_url) {
+                    landingUrlField.value = response.landing_page_url;
                 }
+                
+                // Also refresh the current view if we're on the edit page
+                setTimeout(() => {
+                    this.editProduct(productId);
+                }, 1000);
             } else {
                 throw new Error(response.message || 'Failed to regenerate landing page');
             }

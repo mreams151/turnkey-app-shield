@@ -166,7 +166,9 @@ app.get('/register', async (c) => {
                       <div>
                           <label class="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
                           <input type="email" id="email" required 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="your.email@example.com"
+                              pattern="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}">
                       </div>
 
                       <div class="bg-yellow-50 p-4 rounded-lg">
@@ -221,10 +223,10 @@ app.get('/register', async (c) => {
                   const registerBtn = document.getElementById('registerBtn');
                   const errorDiv = document.getElementById('registrationError');
                   
-                  // Validate email format
-                  const email = document.getElementById('email').value;
-                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (!emailPattern.test(email)) {
+                  // Validate email format with comprehensive pattern
+                  const email = document.getElementById('email').value.trim();
+                  const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                  if (!email || !emailPattern.test(email)) {
                       errorDiv.textContent = 'Please enter a valid email address.';
                       errorDiv.classList.remove('hidden');
                       return;
