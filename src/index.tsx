@@ -378,9 +378,9 @@ app.get('/download', async (c) => {
                           <div class="bg-green-50 p-6 rounded-lg">
                               <h3 class="text-xl font-bold text-green-900 mb-4">Registration Info</h3>
                               <div class="space-y-3">
-                                  <p class="text-green-800"><strong>Name:</strong> ${customer.first_name} ${customer.last_name}</p>
+                                  <p class="text-green-800"><strong>Name:</strong> ${customer.name}</p>
                                   <p class="text-green-800"><strong>Email:</strong> ${customer.email}</p>
-                                  <p class="text-green-800"><strong>Registration Date:</strong> ${new Date(customer.created_at).toLocaleDateString()}</p>
+                                  <p class="text-green-800"><strong>Registration Date:</strong> ${new Date(customer.registration_date).toLocaleDateString()}</p>
                               </div>
                           </div>
                       </div>
