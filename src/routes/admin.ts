@@ -12,24 +12,24 @@ const admin = new Hono<AppContext>();
 
 // Utility function to generate encrypted landing page URL
 function generateLandingPageURL(productId: number, productName: string, customerEmail?: string): string {
-  const baseURL = 'https://turnkeysoftwareshield.com/Landing/';
+  const baseURL = 'https://turnkeyappshield.com/register';
   
   // Create data object to encrypt
   const landingData = {
-    productId,
-    productName,
-    timestamp: Date.now(),
-    customerEmail: customerEmail || null
+    pid: productId,  // Shorter field names
+    pname: productName,
+    ts: Date.now(),
+    email: customerEmail || null
   };
   
   try {
-    // For now, use base64 encoding (compatible with Cloudflare Workers)
+    // Use base64 encoding with shorter URL structure
     const encodedData = btoa(JSON.stringify(landingData));
-    return `${baseURL}?data=${encodeURIComponent(encodedData)}`;
+    return `${baseURL}?d=${encodeURIComponent(encodedData)}`;
   } catch (error) {
     console.error('Error generating landing page URL:', error);
     // Fallback: simple URL with product ID
-    return `${baseURL}?product=${productId}&name=${encodeURIComponent(productName)}`;
+    return `${baseURL}?p=${productId}`;
   }
 }
 

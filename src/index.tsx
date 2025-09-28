@@ -39,6 +39,270 @@ app.route('/api/admin', admin);
 app.route('/api/init', init);
 // Upload API routes now secured within admin routes only
 
+// Customer registration endpoint - Landing page for product registration
+app.get('/register', async (c) => {
+  try {
+    const encodedData = c.req.query('d');
+    const productId = c.req.query('p'); // Fallback for simple URLs
+    
+    let productInfo = null;
+    
+    if (encodedData) {
+      try {
+        // Decode the landing page data
+        const decodedData = JSON.parse(atob(decodeURIComponent(encodedData)));
+        const db = new DatabaseManager(c.env.DB);
+        
+        // Get product information
+        const product = await db.db.prepare(`
+          SELECT * FROM products WHERE id = ? AND status = 'active'
+        `).bind(decodedData.pid).first();
+        
+        if (product) {
+          productInfo = {
+            id: product.id,
+            name: product.name,
+            version: product.version,
+            description: product.description
+          };
+        }
+      } catch (error) {
+        console.error('Error decoding landing page data:', error);
+      }
+    } else if (productId) {
+      // Fallback: direct product ID
+      const db = new DatabaseManager(c.env.DB);
+      const product = await db.db.prepare(`
+        SELECT * FROM products WHERE id = ? AND status = 'active'
+      `).bind(parseInt(productId)).first();
+      
+      if (product) {
+        productInfo = {
+          id: product.id,
+          name: product.name,
+          version: product.version,
+          description: product.description
+        };
+      }
+    }
+    
+    if (!productInfo) {
+      return c.html(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Registration Error - TurnkeyAppShield</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-50 flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <h1 class="text-2xl font-bold text-red-600 mb-4">Registration Error</h1>
+                <p class="text-gray-600">Invalid or expired registration link.</p>
+            </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Show registration form
+    return c.html(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Register ${productInfo.name} - TurnkeyAppShield</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+      </head>
+      <body class="bg-gray-50">
+          <!-- Navigation -->
+          <nav class="bg-white shadow-sm border-b border-gray-200">
+              <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div class="flex justify-between h-16">
+                      <div class="flex items-center">
+                          <div class="flex-shrink-0 flex items-center">
+                              <i class="fas fa-shield-alt text-2xl text-blue-600 mr-3"></i>
+                              <h1 class="text-xl font-bold text-gray-900">TurnkeyAppShield</h1>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </nav>
+
+          <div class="max-w-2xl mx-auto px-4 py-12">
+              <div class="bg-white rounded-lg shadow-lg p-8">
+                  <div class="text-center mb-8">
+                      <i class="fas fa-user-plus text-4xl text-blue-600 mb-4"></i>
+                      <h1 class="text-3xl font-bold text-gray-900 mb-2">Software Registration</h1>
+                      <p class="text-gray-600">Complete your registration for ${productInfo.name} v${productInfo.version}</p>
+                  </div>
+
+                  <form id="registrationForm" class="space-y-6">
+                      <input type="hidden" id="productId" value="${productInfo.id}">
+                      
+                      <div class="bg-blue-50 p-4 rounded-lg">
+                          <h3 class="font-semibold text-blue-900 mb-2">Product Information</h3>
+                          <p class="text-blue-800"><strong>Name:</strong> ${productInfo.name}</p>
+                          <p class="text-blue-800"><strong>Version:</strong> ${productInfo.version}</p>
+                          ${productInfo.description ? `<p class="text-blue-800"><strong>Description:</strong> ${productInfo.description}</p>` : ''}
+                      </div>
+
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                              <label class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                              <input type="text" id="firstName" required 
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          </div>
+                          <div>
+                              <label class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                              <input type="text" id="lastName" required 
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          </div>
+                      </div>
+
+                      <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                          <input type="email" id="email" required 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      </div>
+
+                      <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-2">Company/Organization</label>
+                          <input type="text" id="company" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      </div>
+
+                      <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                          <input type="tel" id="phone" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      </div>
+
+                      <div class="bg-yellow-50 p-4 rounded-lg">
+                          <div class="flex items-start">
+                              <i class="fas fa-info-circle text-yellow-600 mt-1 mr-3"></i>
+                              <div>
+                                  <h4 class="font-semibold text-yellow-900">Hardware Fingerprinting</h4>
+                                  <p class="text-yellow-800 text-sm mt-1">
+                                      We collect hardware information to ensure your license is used only on authorized devices. 
+                                      This helps protect against software piracy and ensures license compliance.
+                                  </p>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div id="registrationError" class="hidden text-red-600 text-sm"></div>
+
+                      <button type="submit" id="registerBtn" 
+                          class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold">
+                          Complete Registration
+                      </button>
+                  </form>
+              </div>
+          </div>
+
+          <script>
+              // Collect hardware fingerprint
+              function collectHardwareFingerprint() {
+                  const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+                  ctx.textBaseline = 'top';
+                  ctx.font = '14px Arial';
+                  ctx.fillText('Hardware fingerprint', 2, 2);
+                  
+                  const fingerprint = {
+                      userAgent: navigator.userAgent,
+                      language: navigator.language,
+                      platform: navigator.platform,
+                      screenResolution: screen.width + 'x' + screen.height,
+                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                      canvasFingerprint: canvas.toDataURL(),
+                      cookieEnabled: navigator.cookieEnabled,
+                      doNotTrack: navigator.doNotTrack,
+                      timestamp: new Date().toISOString()
+                  };
+                  
+                  return JSON.stringify(fingerprint);
+              }
+
+              document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+                  e.preventDefault();
+                  
+                  const registerBtn = document.getElementById('registerBtn');
+                  const errorDiv = document.getElementById('registrationError');
+                  
+                  registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registering...';
+                  registerBtn.disabled = true;
+                  errorDiv.classList.add('hidden');
+                  
+                  try {
+                      const response = await fetch('/api/register', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              product_id: parseInt(document.getElementById('productId').value),
+                              first_name: document.getElementById('firstName').value,
+                              last_name: document.getElementById('lastName').value,
+                              email: document.getElementById('email').value,
+                              company: document.getElementById('company').value,
+                              phone: document.getElementById('phone').value,
+                              hardware_fingerprint: collectHardwareFingerprint()
+                          })
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (result.success) {
+                          // Show success page
+                          document.body.innerHTML = \`
+                              <div class="min-h-screen bg-gray-50 flex items-center justify-center">
+                                  <div class="max-w-md mx-auto text-center bg-white p-8 rounded-lg shadow-lg">
+                                      <i class="fas fa-check-circle text-5xl text-green-600 mb-4"></i>
+                                      <h1 class="text-2xl font-bold text-gray-900 mb-4">Registration Complete!</h1>
+                                      <p class="text-gray-600 mb-6">
+                                          Thank you for registering ${productInfo.name}. 
+                                          Your license key and download instructions have been sent to your email.
+                                      </p>
+                                      <div class="bg-gray-100 p-4 rounded-lg">
+                                          <p class="text-sm text-gray-700"><strong>License Key:</strong></p>
+                                          <code class="text-lg font-mono text-blue-600">\${result.license_key}</code>
+                                      </div>
+                                  </div>
+                              </div>
+                          \`;
+                      } else {
+                          throw new Error(result.message || 'Registration failed');
+                      }
+                  } catch (error) {
+                      errorDiv.textContent = error.message;
+                      errorDiv.classList.remove('hidden');
+                  } finally {
+                      registerBtn.innerHTML = 'Complete Registration';
+                      registerBtn.disabled = false;
+                  }
+              });
+          </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Registration page error:', error);
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Error - TurnkeyAppShield</title></head>
+      <body>
+          <h1>System Error</h1>
+          <p>Unable to load registration page. Please try again later.</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', async (c) => {
   try {
@@ -57,6 +321,84 @@ app.get('/api/health', async (c) => {
       status: 'unhealthy', 
       timestamp: new Date().toISOString(),
       error: 'Database connection failed'
+    }, 500);
+  }
+});
+
+// Customer registration API endpoint
+app.post('/api/register', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    // Validate required fields
+    if (!body.product_id || !body.first_name || !body.last_name || !body.email) {
+      return c.json({
+        success: false,
+        message: 'Missing required fields'
+      }, 400);
+    }
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if product exists and is active
+    const product = await db.db.prepare(`
+      SELECT * FROM products WHERE id = ? AND status = 'active'
+    `).bind(body.product_id).first();
+    
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Invalid product'
+      }, 404);
+    }
+    
+    // Check if customer already exists with this email for this product
+    const existingCustomer = await db.db.prepare(`
+      SELECT id FROM customers WHERE email = ? AND product_id = ?
+    `).bind(body.email, body.product_id).first();
+    
+    if (existingCustomer) {
+      return c.json({
+        success: false,
+        message: 'Customer already registered for this product'
+      }, 409);
+    }
+    
+    // Generate license key using ModernCrypto
+    const { ModernCrypto } = await import('./utils/security');
+    const licenseKey = ModernCrypto.generateLicenseKey();
+    
+    // Create customer record
+    const result = await db.db.prepare(`
+      INSERT INTO customers (
+        product_id, email, first_name, last_name, 
+        company, phone, license_key, hardware_fingerprint,
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).bind(
+      body.product_id,
+      body.email,
+      body.first_name,
+      body.last_name,
+      body.company || null,
+      body.phone || null,
+      licenseKey,
+      body.hardware_fingerprint || null
+    ).run();
+    
+    return c.json({
+      success: true,
+      customer_id: result.meta.last_row_id,
+      license_key: licenseKey,
+      download_url: product.download_url,
+      message: 'Registration completed successfully'
+    });
+    
+  } catch (error) {
+    console.error('Registration error:', error);
+    return c.json({
+      success: false,
+      message: 'Registration failed. Please try again.'
     }, 500);
   }
 });
