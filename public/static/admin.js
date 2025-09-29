@@ -1575,7 +1575,10 @@ class AdminPanel {
                                    <button onclick="adminPanel.showProductDetails(${product.id})" class="text-purple-600 hover:text-purple-800 mr-3">
                                      <i class="fas fa-info-circle mr-1"></i>Details
                                    </button>
-                                   <button onclick="adminPanel.editProduct(${product.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>`;
+                                   <button onclick="adminPanel.editProduct(${product.id})" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                                   <button onclick="adminPanel.permanentlyDeleteProduct(${product.id})" class="text-red-800 hover:text-red-900 font-semibold">
+                                     <i class="fas fa-trash-alt mr-1"></i>Delete Forever
+                                   </button>`;
                             
                             return `
                                 <tr class="${!isActive ? 'bg-gray-50' : ''}">
@@ -1830,6 +1833,34 @@ class AdminPanel {
         } catch (error) {
             console.error('Restore product error:', error);
             this.showError('Failed to restore product: ' + error.message);
+        }
+    }
+
+    async permanentlyDeleteProduct(productId) {
+        try {
+            // Get product info for confirmation
+            const response = await this.apiCall(`/admin/products/${productId}`);
+            const productName = response.success ? response.product.name : 'this product';
+
+            // Double confirmation for permanent deletion
+            if (confirm(`⚠️ PERMANENT DELETION WARNING ⚠️\n\nThis will PERMANENTLY delete "${productName}" from the database.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?`)) {
+                if (confirm(`Last chance! Permanently delete "${productName}"?\n\nClick OK to permanently delete, or Cancel to abort.`)) {
+                    this.showNotification('Permanently deleting product...', 'info');
+
+                    const deleteResponse = await this.apiCall(`/admin/products/${productId}/permanent`, 'DELETE');
+                    
+                    if (deleteResponse.success) {
+                        this.showNotification(`Product "${productName}" permanently deleted from database!`, 'success');
+                        // Reload the products list with current filter
+                        this.loadProducts(this.currentProductStatus || 'inactive');
+                    } else {
+                        throw new Error(deleteResponse.message || 'Failed to permanently delete product');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Permanent delete product error:', error);
+            this.showError('Failed to permanently delete product: ' + error.message);
         }
     }
 

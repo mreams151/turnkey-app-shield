@@ -1245,6 +1245,63 @@ admin.put('/products/:id/restore', authMiddleware, async (c) => {
   }
 });
 
+// Permanently delete inactive product
+admin.delete('/products/:id/permanent', authMiddleware, async (c) => {
+  try {
+    const productId = parseInt(c.req.param('id'));
+    const db = new DatabaseManager(c.env.DB);
+
+    // Check if product exists and is inactive
+    const product = await db.db.prepare(`
+      SELECT * FROM products WHERE id = ?
+    `).bind(productId).first();
+
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Product not found'
+      }, 404);
+    }
+
+    if (product.status !== 'inactive') {
+      return c.json({
+        success: false,
+        message: 'Only inactive products can be permanently deleted'
+      }, 400);
+    }
+
+    // Check for ANY customers using this product (including revoked)
+    const allCustomers = await db.db.prepare(`
+      SELECT COUNT(*) as count FROM customers 
+      WHERE product_id = ?
+    `).bind(productId).first<{ count: number }>();
+
+    if (allCustomers && allCustomers.count > 0) {
+      return c.json({
+        success: false,
+        message: `Cannot permanently delete product with ${allCustomers.count} customer(s). Please reassign or delete customers first.`
+      }, 400);
+    }
+
+    // Permanently delete from database
+    await db.db.prepare(`
+      DELETE FROM products WHERE id = ?
+    `).bind(productId).run();
+
+    return c.json({
+      success: true,
+      message: 'Product permanently deleted from database'
+    });
+
+  } catch (error) {
+    console.error('Permanent delete product error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to permanently delete product'
+    }, 500);
+  }
+});
+
 // Regenerate Landing Page URL for a product
 admin.post('/products/:id/regenerate-landing', authMiddleware, async (c) => {
   try {
