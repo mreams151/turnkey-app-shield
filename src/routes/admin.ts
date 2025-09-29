@@ -34,16 +34,26 @@ function generateLandingPageURL(productId: number, productName: string, customer
   }
 }
 
-// Utility function to generate a proper license key
+// Utility function to generate a proper license key (16-character format to match existing data)
 function generateLicenseKey(productId: number, customerId?: number): string {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random1 = Math.random().toString(36).substr(2, 4).toUpperCase();
-  const random2 = Math.random().toString(36).substr(2, 4).toUpperCase();
-  const productCode = productId.toString().padStart(2, '0');
-  const customerCode = customerId ? customerId.toString().padStart(3, '0') : '000';
+  // Generate 4 groups of 4 uppercase alphanumeric characters each
+  // Format: XXXX-YYYY-ZZZZ-WWWW (matches existing test data format)
   
-  // Format: TKAS-XXXX-YYYY-PPCC-ZZZZ (TurnkeyAppShield format)
-  return `TKAS-${random1}-${timestamp.substr(-4)}-${productCode}${customerCode.substr(-2)}-${random2}`;
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  
+  const generateGroup = (): string => {
+    let result = '';
+    for (let i = 0; i < 4; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+  
+  // Include product identifier in the first group for uniqueness
+  const productHex = productId.toString(16).toUpperCase().padStart(2, '0');
+  const firstGroup = productHex + generateGroup().substr(2); // Use product ID in first 2 chars
+  
+  return `${firstGroup}-${generateGroup()}-${generateGroup()}-${generateGroup()}`;
 }
 
 // Simple JWT utilities for Cloudflare Workers
