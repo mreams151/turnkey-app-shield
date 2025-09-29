@@ -1363,6 +1363,22 @@ class AdminPanel {
                                 placeholder="customer@example.com">
                         </div>
                     </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Product *</label>
+                        <select id="customer-product" required 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select a product...</option>
+                            <option value="loading" disabled>Loading products...</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                        <textarea id="customer-notes" rows="4"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Additional notes about this customer..."></textarea>
+                    </div>
 
                     <div id="customer-error" class="hidden text-red-600 text-sm"></div>
 
@@ -1384,15 +1400,20 @@ class AdminPanel {
             e.preventDefault();
             this.handleAddCustomer();
         });
+        
+        // Load products for dropdown
+        this.loadProductsForDropdown();
     }
 
     async handleAddCustomer() {
         const name = document.getElementById('customer-name').value.trim();
         const email = document.getElementById('customer-email').value.trim();
+        const productId = document.getElementById('customer-product').value;
+        const notes = document.getElementById('customer-notes').value.trim();
         const errorDiv = document.getElementById('customer-error');
         const saveBtn = document.getElementById('save-customer-btn');
 
-        if (!name || !email) {
+        if (!name || !email || !productId) {
             errorDiv.textContent = 'Please fill in all required fields';
             errorDiv.classList.remove('hidden');
             return;
@@ -1405,12 +1426,14 @@ class AdminPanel {
         try {
             const response = await this.apiCall('/admin/customers', 'POST', {
                 name: name,
-                email: email
+                email: email,
+                product_id: parseInt(productId),
+                notes: notes
             });
 
             if (response.success) {
                 this.showPage('customers');
-                this.showNotification('Customer created successfully', 'success');
+                this.showNotification(`Customer created successfully with license key: ${response.license_key || 'Generated'}`, 'success');
             } else {
                 throw new Error(response.message || 'Failed to create customer');
             }
@@ -1420,6 +1443,32 @@ class AdminPanel {
         } finally {
             saveBtn.innerHTML = 'Create Customer';
             saveBtn.disabled = false;
+        }
+    }
+
+    async loadProductsForDropdown() {
+        try {
+            const response = await this.apiCall('/admin/products?status=active');
+            const products = response.success ? response.products : [];
+            const productSelect = document.getElementById('customer-product');
+            
+            if (productSelect) {
+                productSelect.innerHTML = '<option value="">Select a product...</option>';
+                
+                if (products.length === 0) {
+                    productSelect.innerHTML += '<option value="" disabled>No active products available</option>';
+                } else {
+                    products.forEach(product => {
+                        productSelect.innerHTML += `<option value="${product.id}">${product.name} (v${product.version || '1.0'})</option>`;
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load products:', error);
+            const productSelect = document.getElementById('customer-product');
+            if (productSelect) {
+                productSelect.innerHTML = '<option value="">Select a product...</option><option value="" disabled>Failed to load products</option>';
+            }
         }
     }
 

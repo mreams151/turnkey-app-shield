@@ -34,6 +34,18 @@ function generateLandingPageURL(productId: number, productName: string, customer
   }
 }
 
+// Utility function to generate a proper license key
+function generateLicenseKey(productId: number, customerId?: number): string {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random1 = Math.random().toString(36).substr(2, 4).toUpperCase();
+  const random2 = Math.random().toString(36).substr(2, 4).toUpperCase();
+  const productCode = productId.toString().padStart(2, '0');
+  const customerCode = customerId ? customerId.toString().padStart(3, '0') : '000';
+  
+  // Format: TKAS-XXXX-YYYY-PPCC-ZZZZ (TurnkeyAppShield format)
+  return `TKAS-${random1}-${timestamp.substr(-4)}-${productCode}${customerCode.substr(-2)}-${random2}`;
+}
+
 // Simple JWT utilities for Cloudflare Workers
 const JWT_SECRET = 'turnkey-admin-secret-2024'; // In production, use environment variable
 
@@ -149,10 +161,12 @@ const adminLoginSchema = z.object({
   password: z.string().min(1, 'Password is required')
 });
 
-// Updated customer schema - only name and email required
+// Updated customer schema - name, email, and product_id required
 const customerSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address')
+  email: z.string().email('Invalid email address'),
+  product_id: z.number().int().positive('Product ID is required'),
+  notes: z.string().optional()
 });
 
 // Updated product schema - uses rule_id instead of rules array
@@ -670,23 +684,40 @@ admin.post('/customers', authMiddleware, async (c) => {
       }, 400);
     }
 
-    // Map new schema to current database structure
-    // Note: Current customers table requires product_id and license_key
-    // For now, create a dummy entry - this should be refactored
+    // Verify the product exists and is active
+    const product = await db.db.prepare(`
+      SELECT id, name FROM products WHERE id = ? AND status = 'active'
+    `).bind(validation.data.product_id).first();
+    
+    if (!product) {
+      return c.json({
+        success: false,
+        message: 'Selected product is not available'
+      }, 400);
+    }
+
+    // Generate a proper license key
+    const licenseKey = generateLicenseKey(validation.data.product_id);
+    
+    // Create customer with proper fields
     const customerId = await db.db.prepare(`
       INSERT INTO customers (
         name, email, product_id, license_key, license_type,
-        status, registration_date
-      ) VALUES (?, ?, 1, ?, 'manual', 'active', CURRENT_TIMESTAMP)
+        status, registration_date, notes
+      ) VALUES (?, ?, ?, ?, 'manual', 'active', CURRENT_TIMESTAMP, ?)
     `).bind(
       validation.data.name,
       validation.data.email,
-      'MANUAL-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+      validation.data.product_id,
+      licenseKey,
+      validation.data.notes || null
     ).run();
 
     return c.json({
       success: true,
       customer_id: customerId.meta.last_row_id,
+      license_key: licenseKey,
+      product_name: product.name,
       message: 'Customer created successfully'
     });
 
