@@ -615,12 +615,13 @@ class AdminPanel {
             console.log('Loading customers...');
             console.log('Using simple API call (no auth required)');
             
-            const response = await this.apiCall('/admin/customers');
+            const response = await this.apiCall('/admin/customers?status=active');
             console.log('Customers response:', response);
             
             const customers = response.success ? response.customers : [];
             console.log('Customers data:', customers);
             
+            console.log('About to call renderCustomersTable');
             this.renderCustomersTable(customers);
         } catch (error) {
             console.error('Failed to load customers:', error);
@@ -638,34 +639,90 @@ class AdminPanel {
 
     async loadProductsForFilter() {
         try {
-            const response = await this.apiCall('/admin/products');
+            const response = await this.apiCall('/admin/products?status=all');
             if (response.success && response.products) {
-                // Cache products for getProductName function
+                // Cache products for getProductName function and separate by status
                 this.productsCache = {};
+                this.activeProducts = [];
+                this.inactiveProducts = [];
+                
                 response.products.forEach(product => {
                     this.productsCache[product.id] = product;
+                    if (product.status === 'active') {
+                        this.activeProducts.push(product);
+                    } else {
+                        this.inactiveProducts.push(product);
+                    }
                 });
 
-                // Update the product filter dropdown
-                const productFilter = document.getElementById('product-filter');
-                if (productFilter) {
-                    // Keep "All Products" option and add real products
-                    productFilter.innerHTML = `
-                        <option value="">All Products</option>
-                        ${response.products.map(product => 
-                            `<option value="${product.id}">${product.name}</option>`
-                        ).join('')}
-                    `;
-                }
+                // Initialize with "All Products" tab selected
+                this.currentProductFilterTab = 'all';
+                this.updateProductFilterDropdown();
             }
         } catch (error) {
             console.error('Failed to load products for filter:', error);
         }
     }
 
+    setProductFilter(tabType) {
+        // Update tab appearance
+        document.querySelectorAll('.product-filter-tab').forEach(tab => {
+            tab.className = 'product-filter-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-2 px-1 border-b-2 font-medium text-xs';
+        });
+        
+        document.getElementById(`product-tab-${tabType}`).className = 'product-filter-tab border-brand-blue text-brand-blue py-2 px-1 border-b-2 font-medium text-xs';
+        
+        // Update current filter
+        this.currentProductFilterTab = tabType;
+        this.updateProductFilterDropdown();
+        
+        // Reset the dropdown selection and trigger filter
+        document.getElementById('product-filter').value = '';
+        this.filterCustomers();
+    }
+
+    updateProductFilterDropdown() {
+        const productFilter = document.getElementById('product-filter');
+        if (!productFilter) return;
+
+        let products = [];
+        let emptyText = 'Select a product...';
+
+        switch (this.currentProductFilterTab) {
+            case 'active':
+                products = this.activeProducts || [];
+                emptyText = products.length > 0 ? 'Select an active product...' : 'No active products';
+                break;
+            case 'inactive':
+                products = this.inactiveProducts || [];
+                emptyText = products.length > 0 ? 'Select a deleted product...' : 'No deleted products';
+                break;
+            case 'all':
+            default:
+                products = [...(this.activeProducts || []), ...(this.inactiveProducts || [])];
+                emptyText = 'Select a product...';
+                break;
+        }
+
+        // Sort products by name for better usability
+        products.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Update dropdown content
+        productFilter.innerHTML = `
+            <option value="">${emptyText}</option>
+            ${products.map(product => 
+                `<option value="${product.id}">${product.name}${product.status === 'inactive' ? ' (Deleted)' : ''}</option>`
+            ).join('')}
+        `;
+    }
+
     renderCustomersTable(customers) {
+        console.log('renderCustomersTable called with', customers.length, 'customers');
         const content = document.getElementById('customers-content');
-        content.innerHTML = `
+        console.log('Content element found:', !!content);
+        
+        try {
+            content.innerHTML = `
             <!-- Filter and Export Controls -->
             <div class="bg-white border border-gray-200 rounded-lg p-4 mb-4">
                 <div class="flex flex-wrap items-center gap-4">
@@ -690,21 +747,41 @@ class AdminPanel {
                         </button>
                     </div>
                 
-                    <div class="flex items-center gap-2">
-                        <label class="text-sm font-medium text-gray-700">Select Product</label>
+                    <!-- Product Filter Tabs -->
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm font-medium text-gray-700">Filter by Product</label>
+                        <div class="border-b border-gray-200">
+                            <nav class="-mb-px flex space-x-4">
+                                <button onclick="adminPanel.setProductFilter('all')" 
+                                        id="product-tab-all"
+                                        class="product-filter-tab border-brand-blue text-brand-blue py-2 px-1 border-b-2 font-medium text-xs">
+                                    All Products
+                                </button>
+                                <button onclick="adminPanel.setProductFilter('active')" 
+                                        id="product-tab-active"
+                                        class="product-filter-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-2 px-1 border-b-2 font-medium text-xs">
+                                    Active Products
+                                </button>
+                                <button onclick="adminPanel.setProductFilter('inactive')" 
+                                        id="product-tab-inactive"
+                                        class="product-filter-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-2 px-1 border-b-2 font-medium text-xs">
+                                    Deleted Products
+                                </button>
+                            </nav>
+                        </div>
                         <select id="product-filter" class="border border-gray-300 rounded px-3 py-1 text-sm bg-white" onchange="adminPanel.filterCustomers()">
-                            <option value="">All Products</option>
-                            <!-- Products loaded dynamically by loadProductsForFilter() -->
+                            <option value="">Select a product...</option>
+                            <!-- Products loaded dynamically based on selected tab -->
                         </select>
                     </div>
                     
                     <div class="flex items-center gap-2">
                         <label class="text-sm font-medium text-gray-700">Status</label>
                         <select id="status-filter" class="border border-gray-300 rounded px-3 py-1 text-sm bg-white" onchange="adminPanel.filterCustomers()">
-                            <option value="">All Status</option>
-                            <option value="active">Active</option>
+                            <option value="active" selected>Active</option>
                             <option value="suspended">Suspended</option>
                             <option value="revoked">Revoked</option>
+                            <option value="">All Status</option>
                         </select>
                     </div>
                     
@@ -722,12 +799,34 @@ class AdminPanel {
                 </div>
             </div>
             
+            <!-- Bulk Actions Bar (hidden by default) -->
+            <div id="bulk-actions-bar" class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between" style="display: none;">
+                <div class="flex items-center">
+                    <span id="selection-count" class="text-sm font-medium text-blue-800">0 customers selected</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="adminPanel.clearSelection()" 
+                            class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800">
+                        Clear Selection
+                    </button>
+                    <button onclick="adminPanel.bulkDeleteCustomers()" 
+                            class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                        <i class="fas fa-trash mr-1"></i>
+                        Delete Selected
+                    </button>
+                </div>
+            </div>
+            
             <!-- Customer Table -->
             <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="min-w-full">
                         <thead class="bg-gray-50">
                             <tr>
+                                <th class="px-4 py-3 text-left">
+                                    <input type="checkbox" id="select-all-customers" 
+                                           class="rounded border-gray-300 text-brand-blue focus:ring-brand-blue">
+                                </th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Name <i class="fas fa-sort text-gray-400 ml-1 cursor-pointer"></i>
                                 </th>
@@ -754,6 +853,10 @@ class AdminPanel {
                         <tbody class="bg-white divide-y divide-gray-200">
                             ${customers.length > 0 ? customers.map(customer => `
                                 <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3">
+                                        <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" 
+                                               data-customer-id="${customer.id}" data-customer-name="${(customer.name || '').replace(/"/g, '&quot;')}">
+                                    </td>
                                     <td class="px-4 py-3 text-sm text-gray-900">${customer.name || 'N/A'}</td>
                                     <td class="px-4 py-3 text-sm">
                                         <a href="mailto:${customer.email}" class="text-blue-600 hover:text-blue-800">
@@ -764,7 +867,7 @@ class AdminPanel {
                                         ${this.formatDateTime(customer.registration_date || customer.created_at)}
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-600">
-                                        ${this.getProductName(customer.product_id)}
+                                        ${customer.product_name || this.getProductName(customer.product_id)}
                                     </td>
                                     <td class="px-4 py-3 text-sm font-mono text-gray-600">
                                         ${customer.license_key || 'N/A'}
@@ -788,7 +891,7 @@ class AdminPanel {
                                                 Details
                                             </button>
                                             <button onclick="adminPanel.deleteCustomer(${customer.id})" 
-                                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700" 
+                                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
                                                 title="Delete Customer">
                                                 Delete
                                             </button>
@@ -802,7 +905,7 @@ class AdminPanel {
                                 </tr>
                             `).join('') : `
                                 <tr>
-                                    <td colspan="7" class="px-6 py-8 text-center text-gray-500">No customers found</td>
+                                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">No customers found</td>
                                 </tr>
                             `}
                         </tbody>
@@ -811,61 +914,252 @@ class AdminPanel {
             </div>
         `;
         
-        // Add event listeners for filters
-        document.getElementById('product-filter').addEventListener('change', () => this.filterCustomers());
-        document.getElementById('status-filter').addEventListener('change', () => this.filterCustomers());
+        
+            // Add event listeners for filters
+            document.getElementById('product-filter').addEventListener('change', () => this.filterCustomers());
+            document.getElementById('status-filter').addEventListener('change', () => this.filterCustomers());
+            
+            console.log('Template rendering completed successfully');
+            
+            // Debug: Check if checkbox elements exist in HTML
+            const generatedHTML = content.innerHTML;
+            console.log('Checkbox in HTML:', generatedHTML.includes('select-all-customers'));
+            console.log('Customer checkbox class in HTML:', generatedHTML.includes('customer-checkbox'));
+            
+            // Debug: Show first part of generated HTML to see table structure
+            console.log('First 500 chars of HTML:', generatedHTML.substring(0, 500));
+            
+            // Debug: Check specifically for the table header
+            console.log('Table header includes checkbox th:', generatedHTML.includes('<th class="px-4 py-3 text-left">'));
+            console.log('Table header includes input checkbox:', generatedHTML.includes('<input type="checkbox" id="select-all-customers"'));
+            
+            // Add event listeners for bulk selection checkboxes after DOM update
+            setTimeout(() => {
+                this.setupBulkSelectionListeners();
+            }, 100);
+        } catch (error) {
+            console.error('Error in renderCustomersTable template:', error);
+            console.error('Template string might have syntax error');
+            content.innerHTML = '<div class="p-4 text-red-600">Error rendering customers table</div>';
+        }
+    }
+
+    // Setup event listeners for bulk selection functionality
+    setupBulkSelectionListeners() {
+        console.log('setupBulkSelectionListeners called');
+        // Setup select-all checkbox
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        console.log('Select-all checkbox found:', !!selectAllCheckbox);
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', () => {
+                this.toggleSelectAll();
+            });
+        }
+
+        // Setup individual customer checkboxes
+        const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
+        console.log('Customer checkboxes found:', customerCheckboxes.length);
+        customerCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.updateSelectionCount();
+            });
+        });
+
+        // Initialize selection count
+        this.updateSelectionCount();
+    }
+
+    // Toggle all customer selections
+    toggleSelectAll() {
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
+        
+        if (selectAllCheckbox && customerCheckboxes) {
+            const isChecked = selectAllCheckbox.checked;
+            customerCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+            this.updateSelectionCount();
+        }
+    }
+
+    // Update selection count and bulk action bar visibility
+    updateSelectionCount() {
+        const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
+        const checkedBoxes = document.querySelectorAll('.customer-checkbox:checked');
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        const bulkActionBar = document.getElementById('bulk-actions-bar');
+        const selectionCount = document.getElementById('selection-count');
+
+        const selectedCount = checkedBoxes.length;
+        const totalCount = customerCheckboxes.length;
+
+        // Update select-all checkbox state
+        if (selectAllCheckbox) {
+            if (selectedCount === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (selectedCount === totalCount) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            }
+        }
+
+        // Update selection count display
+        if (selectionCount) {
+            selectionCount.textContent = `${selectedCount} customer${selectedCount !== 1 ? 's' : ''} selected`;
+        }
+
+        // Show/hide bulk action bar
+        if (bulkActionBar) {
+            if (selectedCount > 0) {
+                bulkActionBar.style.display = 'flex';
+            } else {
+                bulkActionBar.style.display = 'none';
+            }
+        }
+    }
+
+    // Clear all selections
+    clearSelection() {
+        const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        
+        customerCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+        
+        this.updateSelectionCount();
+    }
+
+    // Get selected customer IDs and names
+    getSelectedCustomers() {
+        const checkedBoxes = document.querySelectorAll('.customer-checkbox:checked');
+        return Array.from(checkedBoxes).map(checkbox => ({
+            id: parseInt(checkbox.dataset.customerId),
+            name: checkbox.dataset.customerName
+        }));
+    }
+
+    // Bulk delete selected customers
+    async bulkDeleteCustomers() {
+        const selectedCustomers = this.getSelectedCustomers();
+        
+        if (selectedCustomers.length === 0) {
+            this.showNotification('No customers selected', 'warning');
+            return;
+        }
+
+        const customerNames = selectedCustomers.map(c => c.name).join(', ');
+        const confirmMessage = `Are you sure you want to delete ${selectedCustomers.length} customer${selectedCustomers.length !== 1 ? 's' : ''}?\n\nSelected customers:\n${customerNames}`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            this.showNotification('Deleting customers...', 'info');
+            
+            // Delete customers one by one
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const customer of selectedCustomers) {
+                try {
+                    const response = await this.apiCall(`/admin/customers/${customer.id}`, 'DELETE');
+                    if (response.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        console.error(`Failed to delete customer ${customer.name}:`, response.error);
+                    }
+                } catch (error) {
+                    failCount++;
+                    console.error(`Failed to delete customer ${customer.name}:`, error);
+                }
+            }
+            
+            // Show results
+            if (successCount > 0 && failCount === 0) {
+                this.showNotification(`Successfully deleted ${successCount} customer${successCount !== 1 ? 's' : ''}`, 'success');
+            } else if (successCount > 0 && failCount > 0) {
+                this.showNotification(`Deleted ${successCount} customers, failed to delete ${failCount}`, 'warning');
+            } else {
+                this.showNotification(`Failed to delete all ${failCount} customers`, 'error');
+            }
+            
+            // Reload customers list
+            await this.loadCustomers();
+            
+        } catch (error) {
+            console.error('Bulk delete error:', error);
+            this.showNotification('Failed to delete customers', 'error');
+        }
     }
 
     // Render only the table content without filter controls (for filtering)
     renderCustomersTableOnly(customers) {
+        console.log('renderCustomersTableOnly called with', customers.length, 'customers');
         const tableContainer = document.querySelector('#customers-content .overflow-x-auto table tbody');
+        console.log('Table container found:', !!tableContainer);
         if (tableContainer) {
-            tableContainer.innerHTML = customers.length > 0 ? customers.map(customer => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3 text-sm text-gray-900">${customer.name || 'N/A'}</td>
-                    <td class="px-4 py-3 text-sm">
-                        <a href="mailto:${customer.email}" class="text-blue-600 hover:text-blue-800">
-                            ${customer.email}
-                        </a>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-600">
-                        ${this.formatDateTime(customer.registration_date || customer.created_at)}
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-600">
-                        ${this.getProductName(customer.product_id)}
-                    </td>
-                    <td class="px-4 py-3 text-sm font-mono text-gray-600">
-                        ${customer.license_key || 'N/A'}
-                    </td>
-                    <td class="px-4 py-3 text-sm">
-                        <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
-                            ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-sm">
-                        <div class="flex gap-1">
-                            <button onclick="adminPanel.editCustomer(${customer.id})" 
-                                class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                title="Edit Customer">
-                                Edit
-                            </button>
-                            <button onclick="adminPanel.viewCustomerDetails(${customer.id})" 
-                                class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                title="View Details">
-                                Details
-                            </button>
-                            <button onclick="adminPanel.deleteCustomer(${customer.id})" 
-                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700" 
-                                title="Delete Customer">
-                                Delete
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `).join('') : `
+            console.log('About to update tbody with', customers.length, 'customers');
+            try {
+                // Simple template without complex method calls to test
+                const htmlContent = customers.length > 0 ? customers.map(customer => 
+                    `<tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">
+                            <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" 
+                                   data-customer-id="${customer.id}" data-customer-name="${customer.name || 'N/A'}" />
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${customer.name || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="mailto:${customer.email}" class="text-blue-600 hover:text-blue-800">
+                                ${customer.email}
+                            </a>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            ${customer.registration_date || customer.created_at || 'N/A'}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            ${customer.product_name || 'Unknown Product'}
+                        </td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-600">
+                            ${customer.license_key || 'N/A'}
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                ${customer.status || 'N/A'}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <div class="flex gap-1">
+                                <button onclick="adminPanel.editCustomer(${customer.id})" 
+                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">
+                                    Edit
+                                </button>
+                                <button onclick="adminPanel.viewCustomerDetails(${customer.id})" 
+                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">
+                                    Details
+                                </button>
+                                <button onclick="adminPanel.deleteCustomer(${customer.id})" 
+                                    class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
+                                    Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`
+            ).join('') : `
                 <tr>
-                    <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
                         <div class="flex flex-col items-center">
                             <i class="fas fa-users text-4xl text-gray-300 mb-4"></i>
                             <h3 class="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
@@ -874,7 +1168,78 @@ class AdminPanel {
                     </td>
                 </tr>
             `;
+                
+                console.log('Generated HTML contains checkbox:', htmlContent.includes('customer-checkbox'));
+                console.log('About to set innerHTML');
+                tableContainer.innerHTML = htmlContent;
+                console.log('innerHTML set successfully');
+                
+                // Debug: Check immediately after setting innerHTML
+                const checkboxesImmediately = tableContainer.querySelectorAll('.customer-checkbox').length;
+                console.log('Checkboxes immediately after innerHTML:', checkboxesImmediately);
+                
+                // Debug: Check the actual HTML in the DOM
+                console.log('First 200 chars of actual DOM HTML:', tableContainer.innerHTML.substring(0, 200));
+                
+                // If checkboxes are missing, try to add them manually using DOM methods  
+                console.log('Checking if DOM manipulation needed. Checkboxes found:', checkboxesImmediately);
+                if (checkboxesImmediately === 0) {
+                    console.log('Checkboxes missing! Adding manually via DOM manipulation...');
+                    const rows = tableContainer.querySelectorAll('tr');
+                    rows.forEach((row, index) => {
+                        if (index < customers.length) {
+                            const customer = customers[index];
+                            
+                            // Create new TD for checkbox
+                            const checkboxTd = document.createElement('td');
+                            checkboxTd.className = 'px-4 py-3';
+                            
+                            // Create checkbox element using DOM methods
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.className = 'customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue';
+                            checkbox.setAttribute('data-customer-id', customer.id);
+                            checkbox.setAttribute('data-customer-name', customer.name || 'N/A');
+                            
+                            // Add checkbox to TD
+                            checkboxTd.appendChild(checkbox);
+                            
+                            // Insert as first TD in the row
+                            row.insertBefore(checkboxTd, row.firstChild);
+                            
+                            console.log('Added checkbox TD for customer:', customer.id);
+                        }
+                    });
+                    
+                    const checkboxesAfterManual = tableContainer.querySelectorAll('.customer-checkbox').length;
+                    console.log('Checkboxes after manual addition:', checkboxesAfterManual);
+                } else {
+                    console.log('Checkboxes already present, no DOM manipulation needed');
+                }
+                
+                // Double-check: Always ensure checkboxes exist after any operation
+                setTimeout(() => {
+                    const finalCheckboxCount = tableContainer.querySelectorAll('.customer-checkbox').length;
+                    console.log('Final checkbox count after all operations:', finalCheckboxCount);
+                    if (finalCheckboxCount === 0) {
+                        console.log('WARNING: No checkboxes found after renderCustomersTableOnly!');
+                    }
+                }, 20);
+                
+            } catch (error) {
+                console.error('Error in renderCustomersTableOnly template:', error);
+                tableContainer.innerHTML = '<tr><td colspan="8" class="p-4 text-red-600">Error rendering table</td></tr>';
+            }
         }
+        
+        // Re-setup event listeners after table re-render
+        this.setupBulkSelectionListeners();
+        
+        // Debug: Check if checkboxes exist after renderCustomersTableOnly
+        setTimeout(() => {
+            const checkboxCount = document.querySelectorAll('.customer-checkbox').length;
+            console.log('Checkboxes after renderCustomersTableOnly:', checkboxCount);
+        }, 10);
     }
 
     // Helper method to format date and time like your old system
@@ -902,14 +1267,21 @@ class AdminPanel {
 
     // Filter customers by product and status
     async filterCustomers() {
+        console.log('filterCustomers() called');
         const productFilter = document.getElementById('product-filter').value;
         const statusFilter = document.getElementById('status-filter').value;
-        console.log('Filtering by product:', productFilter, 'status:', statusFilter);
+        // Preserve current search term if any
+        const searchInput = document.getElementById('customer-search');
+        const currentSearchTerm = searchInput ? searchInput.value : '';
+        console.log('Filtering by product:', productFilter, 'status:', statusFilter, 'search:', currentSearchTerm);
         
         try {
             let endpoint = '/admin/customers';
             const params = [];
             
+            if (currentSearchTerm) {
+                params.push(`search=${encodeURIComponent(currentSearchTerm)}`);
+            }
             if (productFilter) {
                 params.push(`product_id=${productFilter}`);
             }
@@ -928,8 +1300,18 @@ class AdminPanel {
             const response = await this.apiCall(endpoint);
             const customers = response.success ? response.customers : [];
             
-            // Only update the table content, not the filter dropdown
-            this.renderCustomersTableOnly(customers);
+            // Use the same rendering method as initial load to ensure consistency
+            this.renderCustomersTable(customers);
+            
+            // Restore search term after table rebuild
+            if (currentSearchTerm) {
+                setTimeout(() => {
+                    const newSearchInput = document.getElementById('customer-search');
+                    if (newSearchInput) {
+                        newSearchInput.value = currentSearchTerm;
+                    }
+                }, 10);
+            }
         } catch (error) {
             console.error('Filter customers error:', error);
             this.showNotification('Failed to filter customers', 'error');
@@ -1044,7 +1426,7 @@ class AdminPanel {
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Product</label>
-                        <div class="text-sm text-gray-900">${this.getProductName(customer.product_id)}</div>
+                        <div class="text-sm text-gray-900">${customer.product_name || this.getProductName(customer.product_id)}</div>
                     </div>
                 </div>
 
@@ -1190,6 +1572,124 @@ class AdminPanel {
         } catch (error) {
             console.error('Delete customer error:', error);
             this.showError('Failed to delete customer');
+        }
+    }
+
+    // Bulk Selection Methods (duplicate removed - using the one with debug statements)
+
+    toggleSelectAll() {
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
+        
+        customerCheckboxes.forEach(checkbox => {
+            checkbox.checked = selectAllCheckbox.checked;
+        });
+        
+        this.updateSelectionCount();
+    }
+
+    updateSelectionCount() {
+        const selectedCustomers = document.querySelectorAll('.customer-checkbox:checked');
+        const count = selectedCustomers.length;
+        const totalCustomers = document.querySelectorAll('.customer-checkbox').length;
+        
+        // Update the selection count display
+        const selectionCount = document.getElementById('selection-count');
+        const bulkActionsBar = document.getElementById('bulk-actions-bar');
+        const selectAllCheckbox = document.getElementById('select-all-customers');
+        
+        if (count > 0) {
+            selectionCount.textContent = `${count} customer${count === 1 ? '' : 's'} selected`;
+            bulkActionsBar.classList.remove('hidden');
+            
+            // Update select all checkbox state
+            if (count === totalCustomers) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            }
+        } else {
+            bulkActionsBar.classList.add('hidden');
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+    }
+
+    clearSelection() {
+        document.querySelectorAll('.customer-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        document.getElementById('select-all-customers').checked = false;
+        this.updateSelectionCount();
+    }
+
+    async bulkDeleteCustomers() {
+        const selectedCustomers = document.querySelectorAll('.customer-checkbox:checked');
+        const count = selectedCustomers.length;
+        
+        if (count === 0) {
+            this.showNotification('No customers selected', 'warning');
+            return;
+        }
+
+        // Get customer names for confirmation
+        const customerNames = Array.from(selectedCustomers).map(checkbox => 
+            checkbox.dataset.customerName
+        ).join(', ');
+
+        // Double confirmation for bulk deletion
+        const confirmMessage = `⚠️ BULK DELETION WARNING ⚠️\n\nYou are about to delete ${count} customer${count === 1 ? '' : 's'}:\n\n${customerNames}\n\nThis action CANNOT be undone!\n\nAre you sure you want to proceed?`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        // Second confirmation
+        if (!confirm(`Final confirmation: Delete ${count} customer${count === 1 ? '' : 's'}?\n\nClick OK to delete or Cancel to abort.`)) {
+            return;
+        }
+
+        try {
+            this.showNotification(`Deleting ${count} customer${count === 1 ? '' : 's'}...`, 'info');
+
+            // Delete customers one by one
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (const checkbox of selectedCustomers) {
+                try {
+                    const customerId = checkbox.dataset.customerId;
+                    const response = await this.apiCall(`/admin/customers/${customerId}`, 'DELETE');
+                    
+                    if (response.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                        console.error(`Failed to delete customer ${customerId}:`, response.message);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.error(`Error deleting customer ${checkbox.dataset.customerId}:`, error);
+                }
+            }
+
+            // Show results
+            if (successCount > 0 && errorCount === 0) {
+                this.showNotification(`Successfully deleted ${successCount} customer${successCount === 1 ? '' : 's'}!`, 'success');
+            } else if (successCount > 0 && errorCount > 0) {
+                this.showNotification(`Deleted ${successCount} customer${successCount === 1 ? '' : 's'}, but ${errorCount} failed. Check console for details.`, 'warning');
+            } else {
+                this.showNotification(`Failed to delete customers. Check console for details.`, 'error');
+            }
+
+            // Reload customers list and clear selection
+            this.showPage('customers');
+            
+        } catch (error) {
+            console.error('Bulk delete error:', error);
+            this.showNotification('Failed to delete customers', 'error');
         }
     }
 
@@ -1849,6 +2349,11 @@ class AdminPanel {
 
                     const deleteResponse = await this.apiCall(`/admin/products/${productId}/permanent`, 'DELETE');
                     
+                    console.log('=== DELETE RESPONSE DEBUG ===');
+                    console.log('deleteResponse:', deleteResponse);
+                    console.log('deleteResponse.success:', deleteResponse.success);
+                    console.log('deleteResponse.message:', deleteResponse.message);
+                    
                     if (deleteResponse.success) {
                         this.showNotification(`Product "${productName}" permanently deleted from database!`, 'success');
                         // Reload the products list with current filter
@@ -1860,7 +2365,39 @@ class AdminPanel {
             }
         } catch (error) {
             console.error('Permanent delete product error:', error);
-            this.showError('Failed to permanently delete product: ' + error.message);
+            console.error('Error details:', {
+                message: error.message,
+                status: error.status,
+                response: error.response?.data,
+                originalError: error.originalError
+            });
+            
+            // Extract the most specific error message available
+            let errorMessage = 'Failed to permanently delete product';
+            
+            // Try to get server message in order of preference
+            if (error.message && !error.message.includes('Request failed with status code')) {
+                // This is our enhanced error message from apiCall
+                errorMessage += ': ' + error.message;
+            } else if (error.response?.data?.message) {
+                // Direct server message
+                errorMessage += ': ' + error.response.data.message;
+            } else if (error.message) {
+                // Fallback to axios error message
+                errorMessage += ': ' + error.message;
+            }
+            
+            // Add helpful hints for common error scenarios
+            if (error.status === 400 || (error.response && error.response.status === 400)) {
+                const fullMessage = errorMessage.toLowerCase();
+                if (fullMessage.includes('inactive')) {
+                    errorMessage += '\n\n💡 Tip: You must first deactivate the product before permanently deleting it.';
+                } else if (fullMessage.includes('customer')) {
+                    errorMessage += '\n\n💡 Tip: Delete all customers from this product first, then try again.';
+                }
+            }
+            
+            this.showNotification(errorMessage, 'error');
         }
     }
 
@@ -3763,11 +4300,25 @@ class AdminPanel {
             return response.data;
         } catch (error) {
             console.error('API call failed:', error);
+            console.error('Error response data:', error.response?.data);
+            console.error('Error response status:', error.response?.status);
             
             // If it's an auth error, clear token and redirect to login
             if (error.response?.status === 401) {
                 this.logout();
                 return;
+            }
+            
+            // Extract meaningful error message from server response
+            if (error.response?.data) {
+                const serverMessage = error.response.data.message || error.response.data.error;
+                console.log('Extracted server message:', serverMessage);
+                if (serverMessage) {
+                    const enhancedError = new Error(serverMessage);
+                    enhancedError.status = error.response.status;
+                    enhancedError.originalError = error;
+                    throw enhancedError;
+                }
             }
             
             throw error;
@@ -5243,7 +5794,7 @@ This action cannot be undone.`;
         notification.innerHTML = `
             <div class="flex items-center">
                 <i class="fas ${icons[type]} mr-3"></i>
-                <span>${message}</span>
+                <span>${message.replace(/\n/g, '<br>')}</span>
                 <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
                     <i class="fas fa-times"></i>
                 </button>
@@ -6260,48 +6811,7 @@ This action cannot be undone.`;
         this.searchCustomers('');
     }
 
-    // Update the existing filter methods to work with search
-    async filterCustomers() {
-        const productFilter = document.getElementById('product-filter')?.value;
-        const statusFilter = document.getElementById('status-filter')?.value;
-        const searchTerm = document.getElementById('customer-search')?.value?.trim() || '';
-        
-        console.log('Filtering customers - Product:', productFilter, 'Status:', statusFilter, 'Search:', searchTerm);
-        
-        try {
-            let endpoint = '/admin/customers';
-            const params = [];
-            
-            if (searchTerm) {
-                params.push(`search=${encodeURIComponent(searchTerm)}`);
-            }
-            if (productFilter) {
-                params.push(`product_id=${productFilter}`);
-            }
-            if (statusFilter) {
-                params.push(`status=${statusFilter}`);
-            }
-            
-            if (params.length > 0) {
-                endpoint += `?${params.join('&')}`;
-            }
-            
-            console.log('Filter endpoint:', endpoint);
-            
-            const response = await this.apiCall(endpoint);
-            const customers = response.success ? response.customers : [];
-            
-            // Only update the table content, not the filter dropdown
-            this.renderCustomersTableOnly(customers);
-            
-            // Update search results indicator
-            this.showSearchResults(customers.length, searchTerm);
-            
-        } catch (error) {
-            console.error('Filter customers error:', error);
-            this.showError('Failed to filter customers');
-        }
-    }
+
 }
 
 // Initialize admin panel when DOM is loaded

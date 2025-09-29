@@ -595,10 +595,12 @@ admin.get('/customers', authMiddleware, async (c) => {
              c.name as display_name,
              c.registration_date as created_at,
              (CASE WHEN c.status = 'active' THEN 1 ELSE 0 END) as is_active,
-             1 as license_count
+             1 as license_count,
+             p.name as product_name
       FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
     `;
-    let countQuery = 'SELECT COUNT(*) as total FROM customers c';
+    let countQuery = 'SELECT COUNT(*) as total FROM customers c LEFT JOIN products p ON c.product_id = p.id';
     const params: any[] = [];
 
     // Only filter out revoked customers if not specifically requesting them
@@ -606,16 +608,18 @@ admin.get('/customers', authMiddleware, async (c) => {
 
     if (search) {
       // Search by name, email, and license key
-      query += ` AND (c.email LIKE ? OR c.name LIKE ? OR c.license_key LIKE ?)`;
-      countQuery += ` AND (email LIKE ? OR name LIKE ? OR license_key LIKE ?)`;
+      const whereClause = hasWhere ? ` AND` : ` WHERE`;
+      query += `${whereClause} (c.email LIKE ? OR c.name LIKE ? OR c.license_key LIKE ?)`;
+      countQuery += `${whereClause} (c.email LIKE ? OR c.name LIKE ? OR c.license_key LIKE ?)`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
+      hasWhere = true;
     }
 
     if (productId) {
       const whereClause = hasWhere ? ` AND` : ` WHERE`;
       query += `${whereClause} c.product_id = ?`;
-      countQuery += `${whereClause} product_id = ?`;
+      countQuery += `${whereClause} c.product_id = ?`;
       params.push(parseInt(productId));
       hasWhere = true;
     }
@@ -623,16 +627,11 @@ admin.get('/customers', authMiddleware, async (c) => {
     if (status) {
       const whereClause = hasWhere ? ` AND` : ` WHERE`;
       query += `${whereClause} c.status = ?`;
-      countQuery += `${whereClause} status = ?`;
+      countQuery += `${whereClause} c.status = ?`;
       params.push(status);
       hasWhere = true;
-    } else {
-      // If no specific status filter is set, filter out revoked customers by default
-      const whereClause = hasWhere ? ` AND` : ` WHERE`;
-      query += `${whereClause} c.status != 'revoked'`;
-      countQuery += `${whereClause} status != 'revoked'`;
-      hasWhere = true;
     }
+    // No default filtering - show all statuses when no specific status is selected
 
     query += ` ORDER BY c.registration_date DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
@@ -964,9 +963,10 @@ admin.get('/products', authMiddleware, async (c) => {
         const stats = await db.db.prepare(`
           SELECT 
             COUNT(*) as total_customers,
-            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_customers
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_customers,
+            COUNT(CASE WHEN status = 'revoked' THEN 1 END) as revoked_customers
           FROM customers
-          WHERE product_id = ? AND status != 'revoked'
+          WHERE product_id = ?
         `).bind(product.id).first();
 
         return {
@@ -1279,7 +1279,7 @@ admin.delete('/products/:id/permanent', authMiddleware, async (c) => {
     if (allCustomers && allCustomers.count > 0) {
       return c.json({
         success: false,
-        message: `Cannot permanently delete product with ${allCustomers.count} customer(s). Please reassign or delete customers first.`
+        message: `Cannot permanently delete product with ${allCustomers.count} customer(s). Please delete all customers first.`
       }, 400);
     }
 
