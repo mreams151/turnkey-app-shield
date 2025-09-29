@@ -1546,6 +1546,7 @@ class AdminPanel {
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -1579,6 +1580,10 @@ class AdminPanel {
                             return `
                                 <tr class="${!isActive ? 'bg-gray-50' : ''}">
                                     <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="font-bold text-lg ${isActive ? 'text-blue-600' : 'text-gray-500'}">${product.id}</div>
+                                        <div class="text-xs text-gray-400">0${product.id.toString(16).toUpperCase().padStart(1, '0')}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="font-medium ${isActive ? 'text-gray-900' : 'text-gray-600'}">${product.name}</div>
                                         <div class="text-sm text-gray-500">${product.description || 'No description'}</div>
                                     </td>
@@ -1596,7 +1601,7 @@ class AdminPanel {
                             `;
                         }).join('') : `
                             <tr>
-                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                                     ${statusFilter === 'active' ? 'No active products found' : 
                                       statusFilter === 'inactive' ? 'No deleted products found' : 
                                       'No products found'}
