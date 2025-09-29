@@ -45,7 +45,7 @@ export class DatabaseManager {
 
   async getCustomerByEmail(email: string): Promise<Customer | null> {
     const result = await this.db.prepare(`
-      SELECT * FROM customers WHERE email = ? AND is_active = 1
+      SELECT * FROM customers WHERE email = ? AND status = 'active'
     `).bind(email).first<Customer>();
 
     return result || null;
