@@ -612,6 +612,7 @@ app.get('/api/admin/simple/customers', async (c) => {
   try {
     const db = new DatabaseManager(c.env.DB);
     const productFilter = c.req.query('product');
+    const statusFilter = c.req.query('status');
     
     let query = `
       SELECT 
@@ -632,14 +633,27 @@ app.get('/api/admin/simple/customers', async (c) => {
       FROM customers c
       LEFT JOIN products p ON c.product_id = p.id`;
     
+    const conditions = [];
+    const params = [];
+    
     if (productFilter) {
-      query += ` WHERE c.product_id = ?`;
+      conditions.push('c.product_id = ?');
+      params.push(productFilter);
+    }
+    
+    if (statusFilter) {
+      conditions.push('c.status = ?');
+      params.push(statusFilter);
+    }
+    
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
     }
     
     query += ` ORDER BY c.registration_date DESC`;
     
-    const customersResult = productFilter 
-      ? await db.db.prepare(query).bind(productFilter).all()
+    const customersResult = params.length > 0 
+      ? await db.db.prepare(query).bind(...params).all()
       : await db.db.prepare(query).all();
 
     // Extract the results array from D1 response

@@ -243,10 +243,13 @@ export interface AdminDashboardData {
   recent_licenses: License[];
   security_events: SecurityEvent[];
   system_health: {
-    database_status: 'healthy' | 'warning' | 'error';
+    status: 'healthy' | 'degraded' | 'critical';
+    database_status: 'healthy' | 'degraded' | 'disconnected';
     email_queue_size: number;
     avg_response_time: number;
     uptime: string;
+    last_check?: string;
+    issues?: string[];
   };
 }
 

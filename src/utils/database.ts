@@ -348,12 +348,12 @@ export class DatabaseManager {
   async logSecurityEvent(event: Omit<SecurityEvent, 'id' | 'created_at'>): Promise<number> {
     const result = await this.db.prepare(`
       INSERT INTO security_events (
-        event_type, severity, customer_id, license_id, ip_address,
-        description, metadata, resolved
+        event_type, severity, customer_id, product_id, ip_address,
+        description, raw_data, is_resolved
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      event.event_type, event.severity, event.customer_id, event.license_id,
-      event.ip_address, event.description, event.metadata, event.resolved || false
+      event.event_type, event.severity, event.customer_id, event.license_id || null,
+      event.ip_address, event.description, event.metadata || null, event.resolved || false
     ).run();
 
     return result.meta.last_row_id as number;
@@ -389,8 +389,8 @@ export class DatabaseManager {
 
   async getAdminByUsername(username: string): Promise<AdminUser | null> {
     const result = await this.db.prepare(`
-      SELECT * FROM admin_users WHERE username = ? AND is_active = 1
-    `).bind(username).first<AdminUser>();
+      SELECT * FROM admin_users WHERE (username = ? OR email = ?) AND is_active = 1
+    `).bind(username, username).first<AdminUser>();
 
     return result || null;
   }
@@ -415,14 +415,15 @@ export class DatabaseManager {
           WHERE status != 'revoked'
         `).first().catch(() => ({ total_customers: 0, active_customers: 0, new_customers_30d: 0 })),
         
-        // License statistics - count actual licenses from licenses table
+        // License statistics - count from customers table since licenses are stored there
         this.db.prepare(`
           SELECT 
             COUNT(*) as total_licenses,
             COUNT(CASE WHEN status = 'active' THEN 1 END) as active_licenses,
             COUNT(CASE WHEN status = 'expired' THEN 1 END) as expired_licenses,
-            COUNT(CASE WHEN created_at >= date('now', '-30 days') AND status = 'active' THEN 1 END) as new_licenses_30d
-          FROM licenses
+            COUNT(CASE WHEN registration_date >= date('now', '-30 days') AND status = 'active' THEN 1 END) as new_licenses_30d
+          FROM customers
+          WHERE status != 'revoked'
         `).first().catch(() => ({ total_licenses: 0, active_licenses: 0, expired_licenses: 0, new_licenses_30d: 0 })),
         
         // Product statistics - separate from licenses

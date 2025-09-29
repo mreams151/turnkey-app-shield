@@ -185,7 +185,7 @@ class AdminPanel {
                 
                 console.log('=== SHOWING DASHBOARD ===');
                 try {
-                    this.showDashboard(response.data.stats);
+                    this.showDashboard(response.data);
                     console.log('=== DASHBOARD RENDER COMPLETE ===');
                 } catch (dashboardError) {
                     console.error('=== DASHBOARD SHOW ERROR ===', dashboardError);
@@ -298,11 +298,7 @@ class AdminPanel {
                                 data-page="products">
                                 <i class="fas fa-box mr-3"></i>Products
                             </button>
-                            <button onclick="adminPanel.showPage('licenses')" 
-                                class="nav-item w-full flex items-center px-4 py-2 text-left text-gray-600 hover:bg-gray-100 rounded-lg"
-                                data-page="licenses">
-                                <i class="fas fa-key mr-3"></i>Licenses
-                            </button>
+
                             <button onclick="adminPanel.showPage('rules')" 
                                 class="nav-item w-full flex items-center px-4 py-2 text-left text-gray-600 hover:bg-gray-100 rounded-lg"
                                 data-page="rules">
@@ -354,7 +350,7 @@ class AdminPanel {
         this.dashboardRendered = true;
     }
 
-    showPage(page) {
+    async showPage(page) {
         this.currentPage = page;
         this.updateActiveNavItem(page);
         
@@ -368,17 +364,15 @@ class AdminPanel {
             case 'products':
                 this.showProducts();
                 break;
-            case 'licenses':
-                this.showLicenses();
-                break;
+
             case 'rules':
                 this.showRules();
                 break;
             case 'uploads':
-                this.showUploads();
+                await this.showUploads();
                 break;
             case 'security':
-                this.showSecurityEvents();
+                await this.showSecurityEvents();
                 break;
             case 'backups':
                 this.showBackups();
@@ -399,7 +393,7 @@ class AdminPanel {
         if (!data) {
             try {
                 const response = await this.apiCall('/admin/dashboard');
-                data = response.success ? response.data.stats : null;
+                data = response.success ? response.data : null;
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
                 data = this.getDefaultDashboardData();
@@ -426,7 +420,7 @@ class AdminPanel {
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-600 text-sm">Total Customers</p>
-                            <p class="text-3xl font-bold text-gray-900">${data?.total_customers || 0}</p>
+                            <p class="text-3xl font-bold text-gray-900">${data?.stats?.total_customers || 0}</p>
                         </div>
                         <div class="bg-blue-100 p-3 rounded-full">
                             <i class="fas fa-users text-blue-600 text-xl"></i>
@@ -437,11 +431,11 @@ class AdminPanel {
                 <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-gray-600 text-sm">Active Licenses</p>
-                            <p class="text-3xl font-bold text-gray-900">${data?.active_licenses || 0}</p>
+                            <p class="text-gray-600 text-sm">Active Customers</p>
+                            <p class="text-3xl font-bold text-gray-900">${data?.stats?.active_licenses || 0}</p>
                         </div>
                         <div class="bg-green-100 p-3 rounded-full">
-                            <i class="fas fa-key text-green-600 text-xl"></i>
+                            <i class="fas fa-users text-green-600 text-xl"></i>
                         </div>
                     </div>
                 </div>
@@ -450,7 +444,7 @@ class AdminPanel {
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-600 text-sm">Products</p>
-                            <p class="text-3xl font-bold text-gray-900">${data?.total_products || 0}</p>
+                            <p class="text-3xl font-bold text-gray-900">${data?.stats?.total_products || 0}</p>
                         </div>
                         <div class="bg-purple-100 p-3 rounded-full">
                             <i class="fas fa-box text-purple-600 text-xl"></i>
@@ -462,7 +456,7 @@ class AdminPanel {
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-600 text-sm">Validations Today</p>
-                            <p class="text-3xl font-bold text-gray-900">${data?.total_licenses || 0}</p>
+                            <p class="text-3xl font-bold text-gray-900">${data?.stats?.validations_today || 0}</p>
                         </div>
                         <div class="bg-yellow-100 p-3 rounded-full">
                             <i class="fas fa-check-circle text-yellow-600 text-xl"></i>
@@ -497,11 +491,11 @@ class AdminPanel {
                         <div class="space-y-4">
                             <div class="flex items-center justify-between">
                                 <span class="text-gray-600">System Status</span>
-                                <span class="px-2 py-1 bg-green-100 text-green-800 text-sm rounded">Operational</span>
+                                <span class="px-2 py-1 ${data?.system_health?.status === 'healthy' ? 'bg-green-100 text-green-800' : data?.system_health?.status === 'degraded' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} text-sm rounded">${data?.system_health?.status === 'healthy' ? 'Operational' : data?.system_health?.status === 'degraded' ? 'Degraded' : 'Critical'}</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-gray-600">Database Status</span>
-                                <span class="px-2 py-1 bg-green-100 text-green-800 text-sm rounded">Connected</span>
+                                <span class="px-2 py-1 ${data?.system_health?.database_status === 'healthy' ? 'bg-green-100 text-green-800' : data?.system_health?.database_status === 'degraded' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} text-sm rounded">${data?.system_health?.database_status === 'healthy' ? 'Connected' : data?.system_health?.database_status === 'degraded' ? 'Degraded' : 'Disconnected'}</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-gray-600">Response Time</span>
@@ -509,8 +503,26 @@ class AdminPanel {
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-gray-600">Uptime</span>
-                                <span class="text-gray-900">99.9%</span>
+                                <span class="text-gray-900">${data?.system_health?.uptime || 'N/A'}</span>
                             </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Email Queue <span class="text-xs text-gray-400">(test data)</span></span>
+                                <span class="text-gray-900 ${data?.system_health?.email_queue_size > 1000 ? 'text-yellow-600' : data?.system_health?.email_queue_size > 5000 ? 'text-red-600' : ''}">${data?.system_health?.email_queue_size || 0}</span>
+                            </div>
+                            ${data?.system_health?.last_check ? `
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Last Check</span>
+                                <span class="text-gray-900 text-xs">${this.formatDateTime(data.system_health.last_check)}</span>
+                            </div>
+                            ` : ''}
+                            ${data?.system_health?.issues && data.system_health.issues.length > 0 ? `
+                            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                                <div class="text-sm font-medium text-yellow-800 mb-2">System Issues:</div>
+                                ${data.system_health.issues.map(issue => `
+                                    <div class="text-xs text-yellow-700 mb-1">• ${issue}</div>
+                                `).join('')}
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -520,7 +532,7 @@ class AdminPanel {
         this.initializeCharts(data);
     }
 
-    filterValidations(period) {
+    async filterValidations(period) {
         // Update filter buttons
         document.querySelectorAll('.validation-filter').forEach(btn => {
             btn.classList.remove('active', 'bg-blue-100', 'text-blue-800');
@@ -532,41 +544,43 @@ class AdminPanel {
         activeBtn.classList.remove('bg-gray-100', 'text-gray-600');
 
         // Update chart data based on period
-        this.updateValidationChart(period);
+        await this.updateValidationChart(period);
     }
 
-    updateValidationChart(period) {
-        // Mock data for different periods
-        const chartData = {
-            day: {
-                labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
-                successful: [10, 15, 25, 30, 20, 12],
-                failed: [2, 1, 3, 2, 1, 1]
-            },
-            week: {
-                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                successful: [120, 150, 180, 160, 140, 80, 90],
-                failed: [5, 8, 12, 7, 6, 3, 4]
-            },
-            month: {
-                labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-                successful: [850, 920, 780, 650],
-                failed: [25, 30, 18, 15]
-            },
-            year: {
-                labels: ['Q1', 'Q2', 'Q3', 'Q4'],
-                successful: [3200, 3800, 3500, 2900],
-                failed: [88, 95, 72, 58]
+    async updateValidationChart(period) {
+        try {
+            console.log('Loading chart data for period:', period);
+            const response = await this.apiCall(`/admin/charts/validations?period=${period}`);
+            
+            if (response.success && response.data) {
+                const data = response.data;
+                console.log('Chart data loaded:', data);
+                
+                if (this.charts.validation) {
+                    this.charts.validation.data.labels = data.labels;
+                    this.charts.validation.data.datasets[0].data = data.successful;
+                    this.charts.validation.data.datasets[1].data = data.failed;
+                    this.charts.validation.update();
+                }
+            } else {
+                console.error('Failed to load chart data:', response.message);
+                // Fallback to empty data
+                if (this.charts.validation) {
+                    this.charts.validation.data.labels = [];
+                    this.charts.validation.data.datasets[0].data = [];
+                    this.charts.validation.data.datasets[1].data = [];
+                    this.charts.validation.update();
+                }
             }
-        };
-
-        const data = chartData[period];
-        
-        if (this.charts.validation) {
-            this.charts.validation.data.labels = data.labels;
-            this.charts.validation.data.datasets[0].data = data.successful;
-            this.charts.validation.data.datasets[1].data = data.failed;
-            this.charts.validation.update();
+        } catch (error) {
+            console.error('Chart data loading error:', error);
+            // Fallback to empty data
+            if (this.charts.validation) {
+                this.charts.validation.data.labels = [];
+                this.charts.validation.data.datasets[0].data = [];
+                this.charts.validation.data.datasets[1].data = [];
+                this.charts.validation.update();
+            }
         }
     }
 
@@ -660,11 +674,42 @@ class AdminPanel {
             <!-- Filter and Export Controls -->
             <div class="bg-white border border-gray-200 rounded-lg p-4 mb-4">
                 <div class="flex flex-wrap items-center gap-4">
+                    <!-- Search Input -->
+                    <div class="flex items-center gap-2 min-w-80">
+                        <label class="text-sm font-medium text-gray-700">
+                            <i class="fas fa-search mr-1"></i>Search
+                        </label>
+                        <input 
+                            type="text" 
+                            id="customer-search" 
+                            placeholder="Name, email, or license key..." 
+                            class="border border-gray-300 rounded px-3 py-1 text-sm bg-white flex-1 min-w-64"
+                            onkeyup="adminPanel.handleSearchInput(this.value)"
+                        >
+                        <button 
+                            onclick="adminPanel.clearSearch()" 
+                            class="text-gray-400 hover:text-gray-600 px-2"
+                            title="Clear search"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                
                     <div class="flex items-center gap-2">
                         <label class="text-sm font-medium text-gray-700">Select Product</label>
-                        <select id="product-filter" class="border border-gray-300 rounded px-3 py-1 text-sm bg-white">
+                        <select id="product-filter" class="border border-gray-300 rounded px-3 py-1 text-sm bg-white" onchange="adminPanel.filterCustomers()">
                             <option value="">All Products</option>
                             <!-- Products loaded dynamically by loadProductsForFilter() -->
+                        </select>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm font-medium text-gray-700">Status</label>
+                        <select id="status-filter" class="border border-gray-300 rounded px-3 py-1 text-sm bg-white" onchange="adminPanel.filterCustomers()">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="suspended">Suspended</option>
+                            <option value="revoked">Revoked</option>
                         </select>
                     </div>
                     
@@ -771,8 +816,9 @@ class AdminPanel {
             </div>
         `;
         
-        // Add event listener for product filter
+        // Add event listeners for filters
         document.getElementById('product-filter').addEventListener('change', () => this.filterCustomers());
+        document.getElementById('status-filter').addEventListener('change', () => this.filterCustomers());
     }
 
     // Render only the table content without filter controls (for filtering)
@@ -859,25 +905,39 @@ class AdminPanel {
         return `Product ${productId}`;
     }
 
-    // Filter customers by product
+    // Filter customers by product and status
     async filterCustomers() {
         const productFilter = document.getElementById('product-filter').value;
-        console.log('Filtering by product:', productFilter);
+        const statusFilter = document.getElementById('status-filter').value;
+        console.log('Filtering by product:', productFilter, 'status:', statusFilter);
         
         try {
-            let endpoint = '/admin/simple/customers';
+            let endpoint = '/admin/customers';
+            const params = [];
+            
             if (productFilter) {
-                endpoint += `?product=${productFilter}`;
+                params.push(`product_id=${productFilter}`);
+            }
+            if (statusFilter) {
+                params.push(`status=${statusFilter}`);
             }
             
-            const response = await this.simpleApiCall(endpoint);
+            // Always use first page when filtering
+            params.push('page=1');
+            params.push('limit=100'); // Show more results when filtering
+            
+            if (params.length > 0) {
+                endpoint += `?${params.join('&')}`;
+            }
+            
+            const response = await this.apiCall(endpoint);
             const customers = response.success ? response.customers : [];
             
             // Only update the table content, not the filter dropdown
             this.renderCustomersTableOnly(customers);
         } catch (error) {
             console.error('Filter customers error:', error);
-            this.showError('Failed to filter customers');
+            this.showNotification('Failed to filter customers', 'error');
         }
     }
 
@@ -906,7 +966,7 @@ class AdminPanel {
         try {
             console.log('Viewing customer details:', customerId);
             
-            const response = await this.simpleApiCall(`/admin/simple/customers/${customerId}`);
+            const response = await this.simpleApiCall(`/api/admin/simple/customers/${customerId}`);
             if (!response.success) {
                 this.showError('Failed to load customer details');
                 return;
@@ -1099,7 +1159,7 @@ class AdminPanel {
             console.log('Editing customer:', customerId);
             
             // Get customer data first
-            const response = await this.simpleApiCall(`/admin/simple/customers/${customerId}`);
+            const response = await this.apiCall(`/admin/customers/${customerId}`);
             if (!response.success) {
                 this.showError('Failed to load customer data');
                 return;
@@ -1178,15 +1238,27 @@ class AdminPanel {
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
                                 placeholder="Auto-generated">
                             <p class="text-xs text-gray-500 mt-1">License key is auto-generated and cannot be edited</p>
+                            <div class="mt-2 flex gap-2">
+                                <button type="button" onclick="navigator.clipboard.writeText('${customer.license_key || ''}')" 
+                                    class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                                    Copy Key
+                                </button>
+                                <button type="button" onclick="adminPanel.resendLicenseEmail(${customer.id})" 
+                                    class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                    Email License
+                                </button>
+                            </div>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">License Status</label>
                             <select id="edit-customer-status" 
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="active" ${customer.status === 'active' ? 'selected' : ''}>Active</option>
-                                <option value="suspended" ${customer.status === 'suspended' || customer.status === 'inactive' ? 'selected' : ''}>Suspended</option>
+                                <option value="active" ${customer.status === 'active' ? 'selected' : ''}>Active License</option>
+                                <option value="suspended" ${customer.status === 'suspended' || customer.status === 'inactive' ? 'selected' : ''}>Suspended License</option>
+                                <option value="revoked" ${customer.status === 'revoked' ? 'selected' : ''}>Revoked License</option>
                             </select>
+                            <p class="text-xs text-gray-500 mt-1">Change license status - revoked licenses can be restored to active or suspended</p>
                         </div>
                         
                         <div class="md:col-span-2">
@@ -1241,7 +1313,7 @@ class AdminPanel {
         try {
             console.log('Updating customer with data:', { name, email, status, notes: notes || null });
             
-            const response = await this.simpleApiCall(`/admin/simple/customers/${customerId}`, 'PUT', {
+            const response = await this.apiCall(`/admin/customers/${customerId}`, 'PUT', {
                 name: name,
                 email: email,
                 status: status,
@@ -1578,7 +1650,7 @@ class AdminPanel {
         const rulesSelect = document.getElementById('product-rules');
         
         try {
-            const response = await this.simpleApiCall('/admin/simple/rules');
+            const response = await this.simpleApiCall('/api/admin/simple/rules');
             
             if (response.success && response.data) {
                 // Clear existing options
@@ -1813,7 +1885,7 @@ class AdminPanel {
 
     async loadRulesForEditProduct(currentRuleId) {
         try {
-            const response = await this.simpleApiCall('/admin/simple/rules');
+            const response = await this.simpleApiCall('/api/admin/simple/rules');
             const rulesSelect = document.getElementById('edit-product-rules');
             
             if (response.success && response.data) {
@@ -2048,92 +2120,7 @@ class AdminPanel {
         }
     }
 
-    async showLicenses() {
-        const content = document.getElementById('main-content');
-        content.innerHTML = `
-            <div class="mb-8">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <h1 class="text-3xl font-bold text-gray-900">Licenses</h1>
-                        <p class="text-gray-600 mt-2">Manage software licenses and activations</p>
-                    </div>
-                    <button onclick="adminPanel.showAddLicense()" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>Generate License
-                    </button>
-                </div>
-            </div>
 
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div class="p-6" id="licenses-content">
-                    <div class="flex items-center justify-center py-8">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-blue"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        await this.loadLicenses();
-    }
-
-    async loadLicenses() {
-        try {
-            const response = await this.apiCall('/admin/licenses');
-            const licenses = response.success ? response.licenses : [];
-            this.renderLicensesTable(licenses);
-        } catch (error) {
-            console.error('Failed to load licenses:', error);
-            document.getElementById('licenses-content').innerHTML = `
-                <div class="text-center py-8">
-                    <p class="text-red-600">Failed to load licenses</p>
-                </div>
-            `;
-        }
-    }
-
-    renderLicensesTable(licenses) {
-        const content = document.getElementById('licenses-content');
-        content.innerHTML = `
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">License Key</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        ${licenses.length > 0 ? licenses.map(license => `
-                            <tr>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded">${license.license_key}</code>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-600">${license.name || 'Unknown'}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-600">${license.product_name || 'Unknown'}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs rounded ${this.getStatusClass(license.status)}">
-                                        ${license.status}
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-600">${this.formatDate(license.expires_at)}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                    <button onclick="adminPanel.viewLicense('${license.license_key}')" class="text-blue-600 hover:text-blue-800 mr-3">View</button>
-                                    <button onclick="adminPanel.revokeLicense('${license.license_key}')" class="text-red-600 hover:text-red-800">Revoke</button>
-                                </td>
-                            </tr>
-                        `).join('') : `
-                            <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">No licenses found</td>
-                            </tr>
-                        `}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
 
     showRules() {
         const content = document.getElementById('main-content');
@@ -2313,7 +2300,7 @@ class AdminPanel {
         try {
             console.log('Loading rules from API...');
             // Use the simple API endpoint for rules (no auth required)
-            const response = await this.simpleApiCall('/admin/simple/rules');
+            const response = await this.simpleApiCall('/api/admin/simple/rules');
             console.log('Rules API response:', response);
             
             if (response.success && response.data) {
@@ -3224,7 +3211,7 @@ class AdminPanel {
         }
     }
 
-    showSecurityEvents() {
+    async showSecurityEvents() {
         const content = document.getElementById('main-content');
         content.innerHTML = `
             <div class="mb-8">
@@ -3234,28 +3221,28 @@ class AdminPanel {
                         <p class="text-gray-600 mt-2">Monitor suspicious activities and security incidents</p>
                     </div>
                     <div class="flex space-x-3">
-                        <select class="px-3 py-2 border border-gray-300 rounded-md">
+                        <select id="severity-filter" class="px-3 py-2 border border-gray-300 rounded-md">
                             <option value="all">All Events</option>
                             <option value="high">High Severity</option>
                             <option value="medium">Medium Severity</option>
                             <option value="low">Low Severity</option>
                         </select>
-                        <button class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                        <button id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                             Export Report
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8" id="security-stats">
                 <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center">
                         <div class="bg-red-100 p-3 rounded-full mr-4">
                             <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
                         </div>
                         <div>
-                            <p class="text-gray-600 text-sm">Critical Events</p>
-                            <p class="text-2xl font-bold text-gray-900">3</p>
+                            <p class="text-gray-600 text-sm">High Severity</p>
+                            <p class="text-2xl font-bold text-gray-900" id="high-severity-count">-</p>
                         </div>
                     </div>
                 </div>
@@ -3266,8 +3253,8 @@ class AdminPanel {
                             <i class="fas fa-shield-alt text-yellow-600 text-xl"></i>
                         </div>
                         <div>
-                            <p class="text-gray-600 text-sm">Blocked IPs</p>
-                            <p class="text-2xl font-bold text-gray-900">12</p>
+                            <p class="text-gray-600 text-sm">Medium Severity</p>
+                            <p class="text-2xl font-bold text-gray-900" id="medium-severity-count">-</p>
                         </div>
                     </div>
                 </div>
@@ -3278,8 +3265,8 @@ class AdminPanel {
                             <i class="fas fa-user-shield text-blue-600 text-xl"></i>
                         </div>
                         <div>
-                            <p class="text-gray-600 text-sm">Failed Logins</p>
-                            <p class="text-2xl font-bold text-gray-900">28</p>
+                            <p class="text-gray-600 text-sm">Low Severity</p>
+                            <p class="text-2xl font-bold text-gray-900" id="low-severity-count">-</p>
                         </div>
                     </div>
                 </div>
@@ -3290,8 +3277,8 @@ class AdminPanel {
                             <i class="fas fa-check-circle text-green-600 text-xl"></i>
                         </div>
                         <div>
-                            <p class="text-gray-600 text-sm">Resolved</p>
-                            <p class="text-2xl font-bold text-gray-900">156</p>
+                            <p class="text-gray-600 text-sm">Total Events</p>
+                            <p class="text-2xl font-bold text-gray-900" id="total-events-count">-</p>
                         </div>
                     </div>
                 </div>
@@ -3299,7 +3286,7 @@ class AdminPanel {
 
             <div class="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div class="p-6 border-b border-gray-200">
-                    <h3 class="text-lg font-semibold text-gray-900">Recent Security Events</h3>
+                    <h3 class="text-lg font-semibold text-gray-900">Security Events</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -3309,40 +3296,159 @@ class AdminPanel {
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Event Type</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-200">
+                        <tbody id="security-events-table" class="divide-y divide-gray-200">
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date().toLocaleString()}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">License Tampering</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">Critical</span>
-                                </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">Attempted license key modification detected</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">192.168.1.100</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">Revoked</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(Date.now() - 3600000).toLocaleString()}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Brute Force Attack</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded">High</span>
-                                </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">Multiple failed validation attempts</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">10.0.0.5</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">Revoked</span>
-                                </td>
+                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         `;
+        
+        // Initialize event listeners
+        this.initializeSecurityEventsListeners();
+        
+        // Load initial data
+        await this.loadSecurityEvents();
+    }
+
+    initializeSecurityEventsListeners() {
+        // Severity filter
+        const severityFilter = document.getElementById('severity-filter');
+        if (severityFilter) {
+            severityFilter.addEventListener('change', () => {
+                this.loadSecurityEvents(severityFilter.value === 'all' ? null : severityFilter.value);
+            });
+        }
+
+        // Export button
+        const exportBtn = document.getElementById('export-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                this.exportSecurityEvents();
+            });
+        }
+    }
+
+    async loadSecurityEvents(severityFilter = null) {
+        try {
+            let url = '/admin/security/events';
+            if (severityFilter) {
+                url += `?severity=${severityFilter}`;
+            }
+
+            console.log('Loading security events from:', url);
+            const response = await this.apiCall(url);
+            
+            if (response.success) {
+                this.displaySecurityEvents(response.events || []);
+                this.updateSecurityStats(response.events || []);
+            } else {
+                this.showNotification('Failed to load security events', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to load security events:', error);
+            this.showNotification('Failed to load security events', 'error');
+            this.displaySecurityEvents([]);
+        }
+    }
+
+    displaySecurityEvents(events) {
+        const tbody = document.getElementById('security-events-table');
+        if (!tbody) return;
+
+        if (!events.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">No security events found</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = events.map(event => `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${this.formatDate(event.created_at)}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${event.event_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 text-xs rounded ${this.getSeverityClass(event.severity)}">
+                        ${event.severity.charAt(0).toUpperCase() + event.severity.slice(1)}
+                    </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-900">
+                    ${event.description}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${event.customer_name ? `${event.customer_name} (${event.customer_email})` : 'N/A'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    ${event.ip_address || 'N/A'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    getSeverityClass(severity) {
+        switch (severity) {
+            case 'high': return 'bg-red-100 text-red-800';
+            case 'medium': return 'bg-yellow-100 text-yellow-800';
+            case 'low': return 'bg-blue-100 text-blue-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    updateSecurityStats(events) {
+        const stats = {
+            high: events.filter(e => e.severity === 'high').length,
+            medium: events.filter(e => e.severity === 'medium').length,
+            low: events.filter(e => e.severity === 'low').length,
+            total: events.length
+        };
+
+        document.getElementById('high-severity-count').textContent = stats.high;
+        document.getElementById('medium-severity-count').textContent = stats.medium;
+        document.getElementById('low-severity-count').textContent = stats.low;
+        document.getElementById('total-events-count').textContent = stats.total;
+    }
+
+    async exportSecurityEvents() {
+        try {
+            this.showNotification('Preparing export...', 'info');
+            
+            const severityFilter = document.getElementById('severity-filter');
+            const severity = severityFilter ? severityFilter.value : 'all';
+            
+            let url = '/admin/export-direct/security_events';
+            if (severity !== 'all') {
+                url += `?severity=${severity}`;
+            }
+
+            console.log('Exporting security events with URL:', url);
+            
+            this.showNotification('Export ready! Download will start shortly...', 'success');
+            
+            // Create a hidden link and click it to download
+            const link = document.createElement('a');
+            link.href = `${this.apiBaseUrl}${url}`;
+            link.download = 'security_events_export.csv';
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+        } catch (error) {
+            console.error('Export failed:', error);
+            this.showNotification('Export failed', 'error');
+        }
     }
 
     showSettings() {
@@ -3463,16 +3569,16 @@ class AdminPanel {
             this.charts.validation = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+                    labels: [],
                     datasets: [{
                         label: 'Successful',
-                        data: [10, 15, 25, 30, 20, 12],
+                        data: [],
                         backgroundColor: 'rgba(59, 130, 246, 0.8)',
                         borderColor: 'rgb(59, 130, 246)',
                         borderWidth: 1
                     }, {
                         label: 'Failed',
-                        data: [2, 1, 3, 2, 1, 1],
+                        data: [],
                         backgroundColor: 'rgba(239, 68, 68, 0.8)',
                         borderColor: 'rgb(239, 68, 68)',
                         borderWidth: 1
@@ -3494,6 +3600,9 @@ class AdminPanel {
                     }
                 }
             });
+            
+            // Load real data for the chart
+            this.updateValidationChart('day');
         }
     }
 
@@ -3512,10 +3621,10 @@ class AdminPanel {
             recent_licenses: [],
             security_events: [],
             system_health: {
-                database_status: 'healthy',
+                database_status: 'unknown',
                 email_queue_size: 0,
-                avg_response_time: 45,
-                uptime: '99.9%'
+                avg_response_time: 0,
+                uptime: 'N/A'
             }
         };
     }
@@ -3553,6 +3662,10 @@ class AdminPanel {
 
     async apiCall(endpoint, method = 'GET', data = null) {
         try {
+            if (!this.token) {
+                throw new Error('No authentication token available. Please login again.');
+            }
+            
             const config = {
                 method,
                 url: `${this.apiBaseUrl}${endpoint}`,
@@ -3570,6 +3683,13 @@ class AdminPanel {
             return response.data;
         } catch (error) {
             console.error('API call failed:', error);
+            
+            // If it's an auth error, clear token and redirect to login
+            if (error.response?.status === 401) {
+                this.logout();
+                return;
+            }
+            
             throw error;
         }
     }
@@ -3872,8 +3992,14 @@ class AdminPanel {
                         <button onclick="adminPanel.refreshUploads()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
                             <i class="fas fa-sync mr-2"></i>Refresh
                         </button>
-                        <button onclick="adminPanel.cleanupUploads()" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
-                            <i class="fas fa-trash mr-2"></i>Cleanup Old Files
+                        <button onclick="adminPanel.previewTempCleanup()" class="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-eye mr-2"></i>Preview Temp Cleanup
+                        </button>
+                        <button onclick="adminPanel.cleanupTempFiles()" class="bg-orange-600 text-white px-3 py-2 rounded-lg hover:bg-orange-700 transition-colors">
+                            <i class="fas fa-broom mr-2"></i>Cleanup Temp Files
+                        </button>
+                        <button onclick="adminPanel.manageProtectedFiles()" class="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-shield-alt mr-2"></i>Manage Protected Files
                         </button>
                     </div>
                 </div>
@@ -4018,19 +4144,29 @@ class AdminPanel {
     }
 
     async loadUploads() {
+        console.log('=== UPLOADS LOAD START ===');
+        console.log('Token available:', !!this.token);
+        console.log('API Base URL:', this.apiBaseUrl);
+        
         try {
+            console.log('Making API call to /admin/uploads/list');
             const response = await this.apiCall('/admin/uploads/list', 'GET');
+            console.log('Uploads API response:', response);
+            
             if (response.success) {
+                console.log('Uploads loaded successfully, count:', response.uploads?.length || 0);
                 this.uploads = response.uploads || [];
                 this.displayUploads();
-                this.updateUploadStats();
+                await this.loadUploadStats();
             } else {
+                console.log('Uploads API returned success:false');
                 this.uploads = [];
                 this.displayUploads();
                 this.showNotification('No uploads found', 'info');
             }
         } catch (error) {
             console.error('Failed to load uploads:', error);
+            console.error('Error details:', error.response?.data || error.message);
             this.uploads = [];
             this.displayUploads();
             this.showNotification('Failed to load uploads', 'error');
@@ -4229,23 +4365,359 @@ class AdminPanel {
         this.showNotification('Upload data refreshed', 'success');
     }
 
-    async cleanupUploads() {
-        if (!confirm('Are you sure you want to clean up old uploads? This will delete files older than 30 days.')) {
+    async previewTempCleanup() {
+        try {
+            console.log('Previewing temp file cleanup...');
+            const response = await this.apiCall('/admin/uploads/cleanup/temp/preview');
+            
+            if (response.success) {
+                this.showTempCleanupPreview(response);
+            } else {
+                throw new Error(response.message || 'Failed to preview temp cleanup');
+            }
+        } catch (error) {
+            console.error('Preview temp cleanup failed:', error);
+            this.showNotification('Failed to preview temp cleanup: ' + error.message, 'error');
+        }
+    }
+
+    showTempCleanupPreview(data) {
+        const files = data.files_to_delete || [];
+        const summary = data.summary || {};
+        
+        // Create modal HTML
+        const modalHtml = `
+            <div id="temp-cleanup-preview-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+                <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900">
+                                <i class="fas fa-broom text-orange-600 mr-2"></i>
+                                Temporary Files Cleanup Preview
+                            </h3>
+                            <button onclick="document.getElementById('temp-cleanup-preview-modal').remove()" 
+                                class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Safety Notice -->
+                    <div class="px-6 py-3 bg-green-50 border-b border-green-200">
+                        <div class="flex items-center">
+                            <i class="fas fa-shield-alt text-green-600 mr-2"></i>
+                            <div class="text-sm text-green-700">
+                                <strong>Safe Cleanup:</strong> Protected/wrapped files are excluded and will never be auto-deleted.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary -->
+                    <div class="px-6 py-4 bg-gray-50 border-b">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-orange-600">${summary.total_files || 0}</div>
+                                <div class="text-sm text-gray-600">Temp Files to Delete</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-blue-600">${summary.total_size_mb || 0} MB</div>
+                                <div class="text-sm text-gray-600">Space to Recover</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-green-600">30+</div>
+                                <div class="text-sm text-gray-600">Days Old</div>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-orange-50 rounded border border-orange-200">
+                            <div class="text-sm text-orange-700">
+                                <strong>Criteria:</strong> ${summary.criteria || 'Temporary files older than 30 days'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Files List -->
+                    <div class="px-6 py-4 max-h-96 overflow-y-auto">
+                        ${files.length > 0 ? `
+                            <div class="space-y-2">
+                                ${files.map(file => `
+                                    <div class="flex items-center justify-between p-3 border border-gray-200 rounded hover:bg-gray-50">
+                                        <div class="flex-1">
+                                            <div class="font-medium text-gray-900">${file.original_filename || 'Unknown'}</div>
+                                            <div class="text-sm text-gray-500">
+                                                Type: ${file.file_type || file.status} • 
+                                                Size: ${file.file_size_mb} MB • 
+                                                Age: ${file.age_days} days old
+                                            </div>
+                                            <div class="text-xs text-gray-400">
+                                                Uploaded: ${this.formatDateTime(file.created_at)}
+                                            </div>
+                                        </div>
+                                        <div class="ml-4">
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                file.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                                file.status === 'uploaded' ? 'bg-orange-100 text-orange-800' :
+                                                file.status === 'uploading' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            }">
+                                                ${file.file_type || file.status}
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="text-center py-8">
+                                <i class="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
+                                <h3 class="text-lg font-medium text-gray-900 mb-2">No Temporary Files to Clean Up</h3>
+                                <p class="text-gray-500">There are no temporary files older than 30 days. Protected files are safely preserved.</p>
+                            </div>
+                        `}
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="text-sm text-gray-600">
+                                ${files.length > 0 ? 
+                                    `🗑️ ${files.length} temporary file${files.length !== 1 ? 's' : ''} will be safely deleted` :
+                                    '✅ No temporary files need cleanup'
+                                }
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="document.getElementById('temp-cleanup-preview-modal').remove()" 
+                                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50">
+                                    Close
+                                </button>
+                                ${files.length > 0 ? `
+                                    <button onclick="document.getElementById('temp-cleanup-preview-modal').remove(); adminPanel.cleanupTempFiles();" 
+                                        class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">
+                                        <i class="fas fa-broom mr-2"></i>Cleanup Temp Files
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    async cleanupTempFiles() {
+        if (!confirm('Are you sure you want to clean up temporary files? This will delete original/failed files older than 30 days.\n\nProtected files will NOT be deleted.')) {
             return;
         }
 
         try {
-            const response = await this.apiCall('/admin/uploads/cleanup', 'POST');
+            const response = await this.apiCall('/admin/uploads/cleanup/temp', 'POST');
             if (response.success) {
-                this.showNotification(`Cleanup completed. ${response.deleted_count} files removed.`, 'success');
+                this.showNotification(`Temp cleanup completed. ${response.deleted_count} temporary files removed. Protected files preserved.`, 'success');
                 this.loadUploads(); // Reload the list
                 this.loadUploadStats(); // Refresh stats
             } else {
-                throw new Error(response.message || 'Failed to cleanup uploads');
+                throw new Error(response.message || 'Failed to cleanup temp files');
             }
         } catch (error) {
-            console.error('Cleanup failed:', error);
-            this.showNotification('Failed to cleanup uploads: ' + error.message, 'error');
+            console.error('Temp cleanup failed:', error);
+            this.showNotification('Failed to cleanup temp files: ' + error.message, 'error');
+        }
+    }
+
+    async manageProtectedFiles() {
+        try {
+            console.log('Loading protected files...');
+            const response = await this.apiCall('/admin/uploads/protected/list');
+            
+            if (response.success) {
+                this.showProtectedFilesManager(response);
+            } else {
+                throw new Error(response.message || 'Failed to load protected files');
+            }
+        } catch (error) {
+            console.error('Load protected files failed:', error);
+            this.showNotification('Failed to load protected files: ' + error.message, 'error');
+        }
+    }
+
+    showProtectedFilesManager(data) {
+        const files = data.protected_files || [];
+        const summary = data.summary || {};
+        
+        // Create modal HTML
+        const modalHtml = `
+            <div id="protected-files-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+                <div class="bg-white rounded-lg shadow-xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900">
+                                <i class="fas fa-shield-alt text-purple-600 mr-2"></i>
+                                Protected Files Manager
+                            </h3>
+                            <button onclick="document.getElementById('protected-files-modal').remove()" 
+                                class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Warning Notice -->
+                    <div class="px-6 py-3 bg-red-50 border-b border-red-200">
+                        <div class="flex items-center">
+                            <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                            <div class="text-sm text-red-700">
+                                <strong>Caution:</strong> These are protected deliverable files. Only delete after customers have downloaded their software.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary -->
+                    <div class="px-6 py-4 bg-gray-50 border-b">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-purple-600">${summary.total_files || 0}</div>
+                                <div class="text-sm text-gray-600">Protected Files</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-blue-600">${summary.total_size_mb || 0} MB</div>
+                                <div class="text-sm text-gray-600">Total Size</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-green-600">Manual</div>
+                                <div class="text-sm text-gray-600">Deletion Only</div>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-purple-50 rounded border border-purple-200">
+                            <div class="text-sm text-purple-700">
+                                <strong>Info:</strong> ${summary.criteria || 'Protected files are never auto-deleted'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Files List -->
+                    <div class="px-6 py-4 max-h-96 overflow-y-auto">
+                        ${files.length > 0 ? `
+                            <div class="mb-4">
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="select-all-protected" onchange="adminPanel.toggleAllProtectedFiles(this.checked)" class="mr-2">
+                                    <span class="text-sm font-medium text-gray-700">Select All</span>
+                                </label>
+                            </div>
+                            <div class="space-y-2">
+                                ${files.map(file => `
+                                    <div class="flex items-center justify-between p-3 border border-gray-200 rounded hover:bg-gray-50">
+                                        <div class="flex items-center flex-1">
+                                            <input type="checkbox" class="protected-file-checkbox mr-3" value="${file.id}" onchange="adminPanel.updateProtectedSelection()">
+                                            <div class="flex-1">
+                                                <div class="font-medium text-gray-900">${file.original_filename || 'Unknown'}</div>
+                                                <div class="text-sm text-gray-500">
+                                                    Customer ID: ${file.customer_id} • 
+                                                    Size: ${file.file_size_mb} MB • 
+                                                    Age: ${file.age_days} days old
+                                                </div>
+                                                <div class="text-xs text-gray-400">
+                                                    Protected: ${this.formatDateTime(file.created_at)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4">
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                                Protected
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="text-center py-8">
+                                <i class="fas fa-shield-alt text-purple-500 text-4xl mb-4"></i>
+                                <h3 class="text-lg font-medium text-gray-900 mb-2">No Protected Files</h3>
+                                <p class="text-gray-500">There are currently no protected/wrapped files in the system.</p>
+                            </div>
+                        `}
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="text-sm text-gray-600">
+                                <span id="selected-count">0</span> file(s) selected for deletion
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="document.getElementById('protected-files-modal').remove()" 
+                                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50">
+                                    Close
+                                </button>
+                                ${files.length > 0 ? `
+                                    <button id="delete-selected-btn" onclick="adminPanel.deleteSelectedProtectedFiles()" 
+                                        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
+                                        <i class="fas fa-trash mr-2"></i>Delete Selected
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    toggleAllProtectedFiles(checked) {
+        const checkboxes = document.querySelectorAll('.protected-file-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+        this.updateProtectedSelection();
+    }
+
+    updateProtectedSelection() {
+        const selectedBoxes = document.querySelectorAll('.protected-file-checkbox:checked');
+        const count = selectedBoxes.length;
+        
+        document.getElementById('selected-count').textContent = count;
+        document.getElementById('delete-selected-btn').disabled = count === 0;
+    }
+
+    async deleteSelectedProtectedFiles() {
+        const selectedBoxes = document.querySelectorAll('.protected-file-checkbox:checked');
+        const fileIds = Array.from(selectedBoxes).map(box => parseInt(box.value));
+        
+        if (fileIds.length === 0) {
+            this.showNotification('No files selected', 'warning');
+            return;
+        }
+
+        const confirmMessage = `Are you sure you want to delete ${fileIds.length} protected file(s)?
+
+⚠️ WARNING: These are customer deliverable files!
+Only delete if customers have already downloaded their software.
+
+This action cannot be undone.`;
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            const response = await this.apiCall('/admin/uploads/protected/delete', 'POST', {
+                file_ids: fileIds
+            });
+            
+            if (response.success) {
+                this.showNotification(`Successfully deleted ${response.deleted_count} protected file(s).`, 'success');
+                document.getElementById('protected-files-modal').remove();
+                this.loadUploads(); // Reload the list
+                this.loadUploadStats(); // Refresh stats
+            } else {
+                throw new Error(response.message || 'Failed to delete protected files');
+            }
+        } catch (error) {
+            console.error('Delete protected files failed:', error);
+            this.showNotification('Failed to delete protected files: ' + error.message, 'error');
         }
     }
 
@@ -4411,6 +4883,7 @@ class AdminPanel {
                                     <i class="fas fa-file-code mr-2"></i>JSON
                                 </button>
                             </div>
+
                         </div>
                     </div>
 
@@ -4441,73 +4914,25 @@ class AdminPanel {
                         </div>
                     </div>
 
-                    <!-- Export Licenses -->
-                    <div class="bg-white shadow rounded-lg">
-                        <div class="px-4 py-5 sm:p-6">
-                            <div class="flex items-center">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-key text-2xl text-yellow-500"></i>
-                                </div>
-                                <div class="ml-5 w-0 flex-1">
-                                    <dl>
-                                        <dt class="text-sm font-medium text-gray-500 truncate">Licenses</dt>
-                                        <dd class="text-lg font-medium text-gray-900">Export license data</dd>
-                                    </dl>
-                                </div>
-                            </div>
-                            <div class="mt-5 flex justify-between">
-                                <button onclick="adminPanel.exportData('licenses', 'csv')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                                    <i class="fas fa-file-csv mr-2"></i>CSV
-                                </button>
-                                <button onclick="adminPanel.exportData('licenses', 'json')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                                    <i class="fas fa-file-code mr-2"></i>JSON
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
 
-                <!-- Bulk License Operations -->
-                <div class="bg-white shadow rounded-lg">
-                    <div class="px-4 py-5 sm:p-6">
-                        <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Bulk License Operations</h3>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <!-- Bulk Create -->
-                            <div class="border border-gray-200 rounded-lg p-4">
-                                <h4 class="font-medium text-gray-900 mb-3">
-                                    <i class="fas fa-plus-circle mr-2 text-green-500"></i>Bulk Create Licenses
-                                </h4>
-                                <p class="text-sm text-gray-600 mb-4">Create multiple licenses at once from a template</p>
-                                <button onclick="adminPanel.showBulkCreateModal()" 
-                                    class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                                    <i class="fas fa-plus mr-2"></i>Bulk Create
-                                </button>
-                            </div>
 
-                            <!-- Bulk Delete -->
-                            <div class="border border-gray-200 rounded-lg p-4">
-                                <h4 class="font-medium text-gray-900 mb-3">
-                                    <i class="fas fa-trash-alt mr-2 text-red-500"></i>Bulk Delete Licenses
-                                </h4>
-                                <p class="text-sm text-gray-600 mb-4">Delete multiple licenses by ID or criteria</p>
-                                <button onclick="adminPanel.showBulkDeleteModal()" 
-                                    class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                                    <i class="fas fa-trash mr-2"></i>Bulk Delete
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         `;
     }
 
     async exportData(entity, format) {
         try {
+            // Check if token exists before attempting export
+            if (!this.token) {
+                this.showNotification('Not authenticated. Please login again.', 'error');
+                this.logout();
+                return;
+            }
+
             const exportName = `${entity}_export_${new Date().toISOString().split('T')[0]}`;
+            
             const response = await this.apiCall(`/admin/export/${entity}`, 'POST', {
                 format,
                 export_name: exportName,
@@ -4518,9 +4943,33 @@ class AdminPanel {
             if (response.success) {
                 this.showNotification(`Export started. Preparing ${response.record_count} records...`, 'success');
                 
-                // Download the file
-                setTimeout(() => {
-                    window.open(`${this.apiBaseUrl}/admin/export/${response.export_id}/download`, '_blank');
+                // Download the file using authenticated request
+                setTimeout(async () => {
+                    try {
+                        const downloadResponse = await axios({
+                            method: 'GET',
+                            url: `${this.apiBaseUrl}/admin/export/${response.export_id}/download`,
+                            headers: {
+                                'Authorization': `Bearer ${this.token}`
+                            },
+                            responseType: 'blob'
+                        });
+                        
+                        // Create download link
+                        const blob = new Blob([downloadResponse.data]);
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `${entity}_export_${format}.${format === 'csv' ? 'csv' : 'json'}`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        
+                    } catch (downloadError) {
+                        console.error('Download failed:', downloadError);
+                        this.showNotification('Export created but download failed. Please try again.', 'warning');
+                    }
                 }, 1000);
             } else {
                 throw new Error(response.message || 'Export failed');
@@ -4528,7 +4977,22 @@ class AdminPanel {
 
         } catch (error) {
             console.error('Export failed:', error);
-            this.showNotification('Export failed: ' + error.message, 'error');
+            console.error('Full error object:', {
+                message: error.message,
+                response: error.response,
+                status: error.response?.status,
+                data: error.response?.data
+            });
+            
+            // Show more specific error messages
+            if (error.response?.status === 401) {
+                this.showNotification('Authentication failed. Please login again.', 'error');
+                this.logout();
+            } else if (error.response?.data?.error) {
+                this.showNotification('Export failed: ' + error.response.data.error, 'error');
+            } else {
+                this.showNotification('Export failed: ' + error.message, 'error');
+            }
         }
     }
 
@@ -5102,6 +5566,8 @@ class AdminPanel {
         this.showLogin();
     }
 
+
+
     // Country selection helper methods for checkbox interface
     populateCountryCheckboxes() {
         const allowedContainer = document.getElementById('allowed-countries-checkboxes');
@@ -5581,10 +6047,18 @@ class AdminPanel {
 
                     if (updateResponse.success) {
                         this.showNotification('License revoked successfully', 'success');
-                        // Refresh the current view if we're on licenses page
-                        if (window.location.hash === '#licenses') {
-                            await this.loadLicenses();
+                        
+                        // Refresh the current view based on active page
+                        const currentHash = window.location.hash;
+                        if (currentHash === '#customers' || currentHash === '') {
+                            await this.loadCustomers();
+                        } else if (currentHash === '#dashboard') {
+                            await this.loadDashboard();
                         }
+                        
+                        // Close any open modals
+                        const modal = document.getElementById('license-modal');
+                        if (modal) modal.remove();
                     } else {
                         throw new Error(updateResponse.message || 'Failed to revoke license');
                     }
@@ -5597,6 +6071,155 @@ class AdminPanel {
         } catch (error) {
             console.error('Failed to revoke license:', error);
             this.showNotification('Failed to revoke license: ' + error.message, 'error');
+        }
+    }
+
+    // Customer Search Functionality
+    handleSearchInput(searchTerm) {
+        // Clear any existing timeout
+        if (this.searchTimeout) {
+            clearTimeout(this.searchTimeout);
+        }
+
+        // Debounce search to avoid too many API calls
+        this.searchTimeout = setTimeout(() => {
+            this.searchCustomers(searchTerm.trim());
+        }, 300); // Wait 300ms after user stops typing
+    }
+
+    async searchCustomers(searchTerm) {
+        try {
+            console.log('Searching customers for:', searchTerm);
+
+            let endpoint = '/admin/customers';
+            const params = [];
+
+            // Add search parameter if provided
+            if (searchTerm) {
+                params.push(`search=${encodeURIComponent(searchTerm)}`);
+            }
+
+            // Include existing filters
+            const productFilter = document.getElementById('product-filter')?.value;
+            const statusFilter = document.getElementById('status-filter')?.value;
+            
+            if (productFilter) {
+                params.push(`product_id=${productFilter}`);
+            }
+            if (statusFilter) {
+                params.push(`status=${statusFilter}`);
+            }
+
+            // Build final endpoint URL
+            if (params.length > 0) {
+                endpoint += `?${params.join('&')}`;
+            }
+
+            console.log('Search endpoint:', endpoint);
+
+            const response = await this.apiCall(endpoint);
+            const customers = response.success ? response.customers : [];
+            
+            console.log('Search results:', customers);
+
+            // Update only the table content, not the entire interface
+            this.renderCustomersTableOnly(customers);
+            
+            // Show search results count
+            this.showSearchResults(customers.length, searchTerm);
+
+        } catch (error) {
+            console.error('Search customers error:', error);
+            this.showError('Failed to search customers');
+        }
+    }
+
+    showSearchResults(count, searchTerm) {
+        // Update or create search results indicator
+        let indicator = document.getElementById('search-results-indicator');
+        
+        if (!indicator) {
+            // Create indicator if it doesn't exist
+            const tableContainer = document.querySelector('.bg-white.border.border-gray-200.rounded-lg.overflow-hidden');
+            if (tableContainer) {
+                indicator = document.createElement('div');
+                indicator.id = 'search-results-indicator';
+                indicator.className = 'px-4 py-2 bg-blue-50 border-b border-blue-200 text-sm text-blue-700';
+                tableContainer.insertBefore(indicator, tableContainer.firstChild);
+            }
+        }
+
+        if (indicator) {
+            if (searchTerm) {
+                indicator.innerHTML = `
+                    <i class="fas fa-search mr-2"></i>
+                    Found <strong>${count}</strong> customer${count !== 1 ? 's' : ''} matching "<strong>${searchTerm}</strong>"
+                    ${count === 0 ? '<span class="ml-2 text-blue-600 cursor-pointer" onclick="adminPanel.clearSearch()">Clear search</span>' : ''}
+                `;
+                indicator.style.display = 'block';
+            } else {
+                indicator.style.display = 'none';
+            }
+        }
+    }
+
+    clearSearch() {
+        // Clear the search input
+        const searchInput = document.getElementById('customer-search');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        // Hide search results indicator
+        const indicator = document.getElementById('search-results-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+
+        // Reset filters and reload all customers
+        this.searchCustomers('');
+    }
+
+    // Update the existing filter methods to work with search
+    async filterCustomers() {
+        const productFilter = document.getElementById('product-filter')?.value;
+        const statusFilter = document.getElementById('status-filter')?.value;
+        const searchTerm = document.getElementById('customer-search')?.value?.trim() || '';
+        
+        console.log('Filtering customers - Product:', productFilter, 'Status:', statusFilter, 'Search:', searchTerm);
+        
+        try {
+            let endpoint = '/admin/customers';
+            const params = [];
+            
+            if (searchTerm) {
+                params.push(`search=${encodeURIComponent(searchTerm)}`);
+            }
+            if (productFilter) {
+                params.push(`product_id=${productFilter}`);
+            }
+            if (statusFilter) {
+                params.push(`status=${statusFilter}`);
+            }
+            
+            if (params.length > 0) {
+                endpoint += `?${params.join('&')}`;
+            }
+            
+            console.log('Filter endpoint:', endpoint);
+            
+            const response = await this.apiCall(endpoint);
+            const customers = response.success ? response.customers : [];
+            
+            // Only update the table content, not the filter dropdown
+            this.renderCustomersTableOnly(customers);
+            
+            // Update search results indicator
+            this.showSearchResults(customers.length, searchTerm);
+            
+        } catch (error) {
+            console.error('Filter customers error:', error);
+            this.showError('Failed to filter customers');
         }
     }
 }

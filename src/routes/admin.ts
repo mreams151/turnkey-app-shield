@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { AppContext, AdminDashboardData } from '../types/database';
 import { DatabaseManager, DatabaseInitializer } from '../utils/database';
 import { PasswordUtils, TokenUtils, ModernCrypto } from '../utils/security';
+import { SystemHealthMonitor } from '../utils/health';
 
 const admin = new Hono<AppContext>();
 
@@ -126,7 +127,7 @@ const authMiddleware = async (c: any, next: any) => {
       return c.json({ error: 'Invalid admin user' }, 401);
     }
 
-    c.set('admin_user', { username: payload.username, role: 'super_admin' });
+    c.set('admin_user', { id: 1, username: payload.username, role: 'super_admin' });
     await next();
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -263,6 +264,37 @@ admin.post('/test', async (c) => {
   return c.json({ success: true, message: 'Test route works' });
 });
 
+// Debug route to check headers and authentication
+admin.get('/debug/headers', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const allHeaders = {};
+  
+  // Get all headers
+  for (const [key, value] of Object.entries(c.req.raw.headers || {})) {
+    allHeaders[key] = value;
+  }
+  
+  return c.json({
+    authHeader,
+    hasAuthHeader: !!authHeader,
+    authHeaderLength: authHeader ? authHeader.length : 0,
+    startsWithBearer: authHeader ? authHeader.startsWith('Bearer ') : false,
+    allHeaders,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test export endpoint that requires authentication  
+admin.post('/debug/test-export', authMiddleware, async (c) => {
+  const adminUser = c.get('admin_user');
+  return c.json({
+    success: true,
+    message: 'Authentication successful for export',
+    admin: adminUser,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Legacy auth route for frontend compatibility
 admin.post('/auth', async (c) => {
   try {
@@ -281,10 +313,10 @@ admin.post('/auth', async (c) => {
 
     const db = new DatabaseManager(c.env.DB);
     
-    // Get admin user by email (since frontend sends email)
+    // Get admin user by email or username (accept both)
     const admin = await db.db.prepare(`
-      SELECT * FROM admin_users WHERE email = ? AND is_active = 1
-    `).bind(email).first<any>();
+      SELECT * FROM admin_users WHERE (email = ? OR username = ?) AND is_active = 1
+    `).bind(email, email).first<any>();
     
     if (!admin) {
       return c.json({
@@ -371,15 +403,14 @@ admin.get('/dashboard', authMiddleware, async (c) => {
       db.getSecurityEvents(undefined, 20)
     ]);
 
-    // Calculate system health metrics - handle missing tables
-    const avgResponseTime = { avg_time: 0 }; // Default for now
-    const emailQueueSize = { count: 0 }; // Default for now
+    // Get real system health metrics
+    const systemHealth = await SystemHealthMonitor.getSystemHealth(db.db);
 
     const dashboardData: AdminDashboardData = {
       stats: {
         total_customers: stats.customers?.total_customers || 0,
         active_licenses: stats.licenses?.active_licenses || 0,
-        total_products: stats.products?.total_products || 0, // Now using separate products stats
+        total_products: stats.products?.active_products || 0, // Only count active products
         validations_today: stats.activations?.total_validations_today || 0,
         total_validations_today: stats.activations?.total_validations_today || 0,
         security_events_today: stats.security?.security_events_today || 0,
@@ -389,10 +420,13 @@ admin.get('/dashboard', authMiddleware, async (c) => {
       recent_licenses: recentLicenses.results || [],
       security_events: securityEvents,
       system_health: {
-        database_status: 'healthy',
-        email_queue_size: emailQueueSize?.count || 0,
-        avg_response_time: avgResponseTime?.avg_time || 0,
-        uptime: '99.9%' // Would calculate from monitoring data
+        status: systemHealth.status,
+        database_status: systemHealth.database_status,
+        email_queue_size: systemHealth.email_queue_size,
+        avg_response_time: systemHealth.avg_response_time,
+        uptime: systemHealth.uptime,
+        last_check: systemHealth.last_check,
+        issues: systemHealth.issues
       }
     };
 
@@ -408,6 +442,116 @@ admin.get('/dashboard', authMiddleware, async (c) => {
   }
 });
 
+// Validation Chart Data
+admin.get('/charts/validations', authMiddleware, async (c) => {
+  try {
+    const period = c.req.query('period') || 'day';
+    const db = new DatabaseManager(c.env.DB);
+    
+    let chartData = {
+      labels: [],
+      successful: [],
+      failed: []
+    };
+    
+    if (period === 'day') {
+      // Last 24 hours, grouped by 4-hour intervals
+      const hours = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
+      chartData.labels = hours;
+      
+      for (let i = 0; i < 6; i++) {
+        const startHour = i * 4;
+        const endHour = (i + 1) * 4;
+        
+        const result = await db.db.prepare(`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful,
+            COUNT(CASE WHEN status != 'valid' THEN 1 END) as failed
+          FROM activation_logs 
+          WHERE date(activation_time) = date('now') 
+            AND cast(strftime('%H', activation_time) as integer) >= ? 
+            AND cast(strftime('%H', activation_time) as integer) < ?
+        `).bind(startHour, endHour).first();
+        
+        chartData.successful.push(result?.successful || 0);
+        chartData.failed.push(result?.failed || 0);
+      }
+    } else if (period === 'week') {
+      // Last 7 days
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      chartData.labels = days;
+      
+      for (let i = 6; i >= 0; i--) {
+        const result = await db.db.prepare(`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful,
+            COUNT(CASE WHEN status != 'valid' THEN 1 END) as failed
+          FROM activation_logs 
+          WHERE date(activation_time) = date('now', '-${i} days')
+        `).first();
+        
+        chartData.successful.push(result?.successful || 0);
+        chartData.failed.push(result?.failed || 0);
+      }
+    } else if (period === 'month') {
+      // Last 4 weeks
+      const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+      chartData.labels = weeks;
+      
+      for (let i = 3; i >= 0; i--) {
+        const startDate = `date('now', '-${(i + 1) * 7} days')`;
+        const endDate = `date('now', '-${i * 7} days')`;
+        
+        const result = await db.db.prepare(`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful,
+            COUNT(CASE WHEN status != 'valid' THEN 1 END) as failed
+          FROM activation_logs 
+          WHERE date(activation_time) >= ${startDate}
+            AND date(activation_time) < ${endDate}
+        `).first();
+        
+        chartData.successful.push(result?.successful || 0);
+        chartData.failed.push(result?.failed || 0);
+      }
+    } else if (period === 'year') {
+      // Last 4 quarters
+      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+      chartData.labels = quarters;
+      
+      for (let i = 3; i >= 0; i--) {
+        const result = await db.db.prepare(`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(CASE WHEN status = 'valid' THEN 1 END) as successful,
+            COUNT(CASE WHEN status != 'valid' THEN 1 END) as failed
+          FROM activation_logs 
+          WHERE date(activation_time) >= date('now', '-${(i + 1) * 3} months')
+            AND date(activation_time) < date('now', '-${i * 3} months')
+        `).first();
+        
+        chartData.successful.push(result?.successful || 0);
+        chartData.failed.push(result?.failed || 0);
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: chartData
+    });
+
+  } catch (error) {
+    console.error('Charts validation error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load chart data'
+    }, 500);
+  }
+});
+
 /**
  * Customer Management
  */
@@ -417,6 +561,7 @@ admin.get('/customers', authMiddleware, async (c) => {
     const limit = parseInt(c.req.query('limit') || '25');
     const search = c.req.query('search') || '';
     const productId = c.req.query('product_id') || '';
+    const status = c.req.query('status') || '';
     const offset = (page - 1) * limit;
 
     const db = new DatabaseManager(c.env.DB);
@@ -438,10 +583,11 @@ admin.get('/customers', authMiddleware, async (c) => {
     let hasWhere = true;
 
     if (search) {
-      query += ` AND (c.email LIKE ? OR c.name LIKE ?)`;
-      countQuery += ` AND (email LIKE ? OR name LIKE ?)`;
+      // Search by name, email, and license key
+      query += ` AND (c.email LIKE ? OR c.name LIKE ? OR c.license_key LIKE ?)`;
+      countQuery += ` AND (email LIKE ? OR name LIKE ? OR license_key LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm);
     }
 
     if (productId) {
@@ -449,6 +595,14 @@ admin.get('/customers', authMiddleware, async (c) => {
       query += `${whereClause} c.product_id = ?`;
       countQuery += `${whereClause} product_id = ?`;
       params.push(parseInt(productId));
+      hasWhere = true;
+    }
+
+    if (status) {
+      const whereClause = hasWhere ? ` AND` : ` WHERE`;
+      query += `${whereClause} c.status = ?`;
+      countQuery += `${whereClause} status = ?`;
+      params.push(status);
       hasWhere = true;
     }
 
@@ -617,7 +771,7 @@ const updateCustomerSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   company: z.string().optional(),
   phone: z.string().optional(),
-  status: z.enum(['active', 'suspended']).optional(), // Only editable statuses
+  status: z.enum(['active', 'suspended', 'revoked']).optional(), // Editable statuses including revoked
   notes: z.string().optional().nullable()
 });
 
@@ -1336,14 +1490,26 @@ admin.post('/licenses/:id/revoke', authMiddleware, async (c) => {
     `).bind(licenseId).run();
 
     // Log security event
-    await db.logSecurityEvent(
-      license.customer_id,
-      licenseId,
-      'license_revoked',
-      'medium',
-      `License ${license.license_key} was revoked by administrator`,
-      {}
-    );
+    try {
+      await db.db.prepare(`
+        INSERT INTO security_events (
+          event_type, severity, customer_id, product_id, ip_address,
+          description, raw_data, is_resolved
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        'license_revoked',
+        'high',
+        license.customer_id,
+        license.product_id,
+        c.req.header('cf-connecting-ip') || 'unknown',
+        `License ${license.license_key} was revoked by administrator`,
+        JSON.stringify({ license_key: license.license_key }),
+        false
+      ).run();
+    } catch (logError) {
+      console.error('Failed to log security event:', logError);
+      // Don't fail the whole operation if logging fails
+    }
 
     return c.json({
       success: true,
@@ -1570,18 +1736,8 @@ admin.post('/backups/create', authMiddleware, async (c) => {
       adminUser.id
     ).run();
 
-    // Log action
-    await db.logAdminAction(
-      adminUser.id,
-      'create_backup',
-      'system_admin',
-      'database_backups',
-      result.meta.last_row_id,
-      'Database backup created',
-      {},
-      { backup_name, tables_count: tables.length, total_records: Object.values(recordCounts).reduce((a: any, b: any) => a + b, 0) },
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log action (simplified logging)
+    console.log(`Admin ${adminUser.username} created database backup: ${backup_name}`);
 
     return c.json({
       success: true,
@@ -1662,17 +1818,8 @@ admin.post('/backups/:id/restore', authMiddleware, async (c) => {
     }
 
     // Log action
-    await db.logAdminAction(
-      adminUser.id,
-      'restore_backup',
-      'system_admin',
-      'database_backups',
-      backupId,
-      `Database restored from backup: ${backup.backup_name}`,
-      {},
-      restoredCounts,
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log action (simplified logging)
+    console.log(`Admin ${adminUser.username} restored database from backup: ${backup.backup_name}`);
 
     return c.json({
       success: true,
@@ -1711,17 +1858,8 @@ admin.delete('/backups/:id', authMiddleware, async (c) => {
     await db.db.prepare(`DELETE FROM database_backups WHERE id = ?`).bind(backupId).run();
 
     // Log action
-    await db.logAdminAction(
-      adminUser.id,
-      'delete_backup',
-      'system_admin',
-      'database_backups',
-      backupId,
-      `Deleted backup: ${backup.backup_name}`,
-      { backup_name: backup.backup_name },
-      {},
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log action (simplified logging)
+    console.log(`Admin ${adminUser.username} deleted backup: ${backup.backup_name}`);
 
     return c.json({
       success: true,
@@ -1753,18 +1891,8 @@ admin.get('/backups/:id/download', authMiddleware, async (c) => {
       return c.json({ success: false, error: 'Backup not found' }, 404);
     }
     
-    // Log the download action
-    await db.logAdminAction(
-      adminUser.id,
-      'download_backup',
-      'system_admin',
-      'database_backups',
-      backupId,
-      `Downloaded backup: ${backup.backup_name}`,
-      { backup_name: backup.backup_name },
-      {},
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log the download action (simplified logging)
+    console.log(`Admin ${adminUser.username} downloaded backup: ${backup.backup_name}`);
     
     // Create filename with timestamp
     const timestamp = new Date(backup.created_at).toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -1821,18 +1949,8 @@ admin.post('/customers/:id/resend-license', authMiddleware, async (c) => {
       }, 404);
     }
     
-    // Log the action
-    await db.logAdminAction(
-      adminUser.id,
-      'resend_license_email',
-      'customer_management',
-      'customers',
-      customerId,
-      `Resent license email to: ${customer.email}`,
-      { customer_email: customer.email, license_key: customer.license_key },
-      {},
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log the action (simplified logging)
+    console.log(`Admin ${adminUser.username} resent license email to: ${customer.email}`);
     
     // TODO: Implement actual email sending
     // For now, just return success
@@ -1985,18 +2103,8 @@ admin.post('/licenses/bulk-create', authMiddleware, async (c) => {
       bulkOpId
     ).run();
 
-    // Log action
-    await db.logAdminAction(
-      adminUser.id,
-      'bulk_create_licenses',
-      'license_management',
-      'licenses',
-      null,
-      `Bulk created ${successful} licenses`,
-      {},
-      { operation_id: bulkOpId, successful, failed, total: licenses.length },
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log action (simplified logging)
+    console.log(`Admin ${adminUser.username} bulk created ${successful} licenses (failed: ${failed})`);
 
     return c.json({
       success: true,
@@ -2108,18 +2216,8 @@ admin.post('/licenses/bulk-delete', authMiddleware, async (c) => {
       bulkOpId
     ).run();
 
-    // Log action
-    await db.logAdminAction(
-      adminUser.id,
-      'bulk_delete_licenses',
-      'license_management',
-      'licenses',
-      null,
-      `Bulk deleted ${successful} licenses`,
-      {},
-      { operation_id: bulkOpId, successful, failed, total: license_ids.length },
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log action (simplified logging)
+    console.log(`Admin ${adminUser.username} bulk deleted ${successful} licenses (failed: ${failed})`);
 
     return c.json({
       success: true,
@@ -2150,7 +2248,7 @@ admin.post('/export/:entity', authMiddleware, async (c) => {
     const { format = 'csv', filters = {}, columns = [], export_name } = await c.req.json();
     const adminUser = c.get('admin_user');
     
-    const validEntities = ['customers', 'products', 'licenses', 'security_events', 'activation_logs'];
+    const validEntities = ['customers', 'products', 'security_events', 'activation_logs'];
     if (!validEntities.includes(entity)) {
       return c.json({
         success: false,
@@ -2188,7 +2286,14 @@ admin.post('/export/:entity', authMiddleware, async (c) => {
         params.push(filters.status);
       }
       
-      query += ` ORDER BY created_at DESC`;
+      // Use appropriate date column for ordering based on entity
+      const dateColumn = entity === 'customers' ? 'registration_date' : 
+                        entity === 'products' ? 'created_at' :
+                        entity === 'security_events' ? 'created_at' :
+                        entity === 'activation_logs' ? 'created_at' :
+                        'created_at'; // default
+                        
+      query += ` ORDER BY ${dateColumn} DESC`;
       
       if (filters.limit) {
         query += ` LIMIT ?`;
@@ -2225,42 +2330,28 @@ admin.post('/export/:entity', authMiddleware, async (c) => {
       // Update export job
       await db.db.prepare(`
         UPDATE data_export_jobs 
-        SET status = 'completed', file_size = ?, progress_percentage = 100,
-            expires_at = datetime('now', '+7 days')
+        SET status = 'completed', completed_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).bind(
-        Buffer.byteLength(exportContent, 'utf8'),
-        exportId
-      ).run();
+      `).bind(exportId).run();
 
       // Log action
-      await db.logAdminAction(
-        adminUser.id,
-        'export_data',
-        'data_management',
-        entity,
-        null,
-        `Exported ${data.length} ${entity} records as ${format.toUpperCase()}`,
-        {},
-        { export_id: exportId, record_count: data.length, format },
-        c.req.header('cf-connecting-ip') || 'unknown'
-      );
+      console.log(`Exported ${data.length} ${entity} records as ${format.toUpperCase()}`);
 
       return c.json({
         success: true,
         export_id: exportId,
         download_url: `/api/admin/export/${exportId}/download`,
         record_count: data.length,
-        file_size: Buffer.byteLength(exportContent, 'utf8')
+        file_size: exportContent.length
       });
 
     } catch (error) {
-      // Update export job as failed
+      // Update export job as failed  
       await db.db.prepare(`
         UPDATE data_export_jobs 
-        SET status = 'failed', error_message = ?
+        SET status = 'failed'
         WHERE id = ?
-      `).bind(error.message, exportId).run();
+      `).bind(exportId).run();
       
       throw error;
     }
@@ -2274,6 +2365,73 @@ admin.post('/export/:entity', authMiddleware, async (c) => {
   }
 });
 
+// Simple direct export endpoint for testing
+admin.get('/export-direct/:entity', authMiddleware, async (c) => {
+  try {
+    const entity = c.req.param('entity');
+    const severity = c.req.query('severity');
+    
+    console.log('Direct export request:', { entity, severity });
+    
+    if (entity !== 'security_events') {
+      return c.json({ success: false, message: 'Only security_events supported' }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    let query = `SELECT * FROM security_events`;
+    const params: any[] = [];
+    
+    if (severity && severity !== 'all') {
+      query += ` WHERE severity = ?`;
+      params.push(severity);
+    }
+    
+    query += ` ORDER BY created_at DESC`;
+    
+    console.log('Executing query:', query, 'with params:', params);
+    
+    const result = await db.db.prepare(query).bind(...params).all();
+    const data = result.results || [];
+    
+    console.log(`Found ${data.length} records`);
+
+    if (data.length === 0) {
+      return c.text('id,event_type,severity,description,ip_address,created_at\n', 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="security_events_empty.csv"'
+      });
+    }
+
+    // Create CSV
+    const headers = Object.keys(data[0]);
+    let csv = headers.join(',') + '\n';
+    
+    for (const row of data) {
+      const values = headers.map(header => {
+        const value = row[header] || '';
+        return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
+      });
+      csv += values.join(',') + '\n';
+    }
+
+    console.log(`Generated CSV with ${csv.length} characters`);
+    
+    return c.text(csv, 200, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="security_events_export.csv"'
+    });
+
+  } catch (error) {
+    console.error('Direct export error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to export data',
+      error: error.message
+    }, 500);
+  }
+});
+
 admin.get('/export/:id/download', authMiddleware, async (c) => {
   try {
     const exportId = parseInt(c.req.param('id'));
@@ -2282,7 +2440,7 @@ admin.get('/export/:id/download', authMiddleware, async (c) => {
     // Get export job
     const exportJob = await db.db.prepare(`
       SELECT * FROM data_export_jobs 
-      WHERE id = ? AND status = 'completed' AND expires_at > datetime('now')
+      WHERE id = ? AND status = 'completed'
     `).bind(exportId).first();
 
     if (!exportJob) {
@@ -2294,11 +2452,35 @@ admin.get('/export/:id/download', authMiddleware, async (c) => {
 
     // For this demo, we'll regenerate the export data
     // In production, you'd store the file and serve it
-    let query = `SELECT * FROM ${exportJob.entity_type}`;
+    const entity = exportJob.entity_type;
+    let query = `SELECT * FROM ${entity}`;
     const filters = JSON.parse(exportJob.export_filters || '{}');
     const columns = JSON.parse(exportJob.columns_selected || '[]');
+    const params: any[] = [];
     
-    const result = await db.db.prepare(query).all();
+    // Apply basic filters if provided
+    if (filters.status) {
+      query += ` WHERE status = ?`;
+      params.push(filters.status);
+    }
+    
+    // Use appropriate date column for ordering based on entity
+    const dateColumn = entity === 'customers' ? 'registration_date' : 
+                      entity === 'products' ? 'created_at' :
+                      entity === 'security_events' ? 'created_at' :
+                      entity === 'activation_logs' ? 'created_at' :
+                      'created_at'; // default
+                      
+    query += ` ORDER BY ${dateColumn} DESC`;
+    
+    if (filters.limit) {
+      query += ` LIMIT ?`;
+      params.push(parseInt(filters.limit));
+    }
+    
+    const result = params.length > 0 
+      ? await db.db.prepare(query).bind(...params).all()
+      : await db.db.prepare(query).all();
     const data = result.results || [];
 
     let exportContent = '';
@@ -2327,12 +2509,8 @@ admin.get('/export/:id/download', authMiddleware, async (c) => {
       exportContent = JSON.stringify(data, null, 2);
     }
 
-    // Update download count
-    await db.db.prepare(`
-      UPDATE data_export_jobs 
-      SET download_count = download_count + 1
-      WHERE id = ?
-    `).bind(exportId).run();
+    // Log download (simplified since we don't have download_count column)
+    console.log(`Export ${exportId} downloaded by admin`);
 
     return new Response(exportContent, {
       headers: {
@@ -2461,18 +2639,8 @@ admin.delete('/uploads/:id', authMiddleware, async (c) => {
     await db.db.prepare(`DELETE FROM file_uploads WHERE id = ?`)
       .bind(uploadId).run();
     
-    // Log admin action
-    await db.logAdminAction(
-      adminUser.id,
-      'delete_upload',
-      'file_management',
-      'file_uploads',
-      uploadId,
-      `Deleted upload: ${upload.original_filename}`,
-      { upload_id: uploadId, filename: upload.original_filename },
-      {},
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log admin action (simplified logging)
+    console.log(`Admin ${adminUser.username} deleted upload: ${upload.original_filename}`);
     
     return c.json({
       success: true,
@@ -2522,18 +2690,8 @@ admin.post('/uploads/cleanup', authMiddleware, async (c) => {
       }
     }
     
-    // Log admin action
-    await db.logAdminAction(
-      adminUser.id,
-      'cleanup_uploads',
-      'file_management',
-      'file_uploads',
-      null,
-      `Cleaned up old uploads`,
-      { cutoff_date: cutoffDate.toISOString() },
-      { deleted_count: deletedCount },
-      c.req.header('cf-connecting-ip') || 'unknown'
-    );
+    // Log admin action (simplified logging)
+    console.log(`Admin ${adminUser.username} cleaned up ${deletedCount} old uploads`);
     
     return c.json({
       success: true,
@@ -3167,29 +3325,195 @@ admin.delete('/uploads/:upload_id', authMiddleware, async (c) => {
 });
 
 // Cleanup old uploads
-admin.post('/uploads/cleanup', authMiddleware, async (c) => {
+// Preview temporary files cleanup (safe auto-cleanup - excludes protected files)
+admin.get('/uploads/cleanup/temp/preview', authMiddleware, async (c) => {
   try {
     const db = new DatabaseManager(c.env.DB);
     
-    // Delete uploads older than 30 days
+    // Get non-protected uploads older than 30 days that would be deleted
+    const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const tempFilesToDelete = await db.db.prepare(`
+      SELECT 
+        id,
+        original_filename,
+        file_size,
+        mime_type,
+        status,
+        created_at,
+        updated_at,
+        customer_id,
+        protection_job_id
+      FROM file_uploads 
+      WHERE created_at < ? AND status IN ('failed', 'uploaded', 'uploading', 'processing')
+      ORDER BY created_at DESC
+    `).bind(cutoffDate.toISOString()).all();
+    
+    const tempFiles = (tempFilesToDelete.results || []).map(file => ({
+      ...file,
+      file_size_mb: file.file_size ? (file.file_size / (1024 * 1024)).toFixed(2) : '0',
+      age_days: Math.floor((Date.now() - new Date(file.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+      file_type: file.status === 'uploaded' ? 'Original (Unprotected)' : 
+                 file.status === 'failed' ? 'Failed Upload' :
+                 file.status === 'uploading' ? 'Stalled Upload' :
+                 file.status === 'processing' ? 'Stalled Processing' : 'Temporary'
+    }));
+    
+    const totalSize = tempFiles.reduce((sum, file) => sum + (file.file_size || 0), 0);
+    const totalSizeMb = (totalSize / (1024 * 1024)).toFixed(2);
+    
+    return c.json({
+      success: true,
+      preview: true,
+      category: 'temporary',
+      files_to_delete: tempFiles,
+      summary: {
+        total_files: tempFiles.length,
+        total_size_bytes: totalSize,
+        total_size_mb: totalSizeMb,
+        cutoff_date: cutoffDate.toISOString(),
+        criteria: 'Temporary files older than 30 days (excludes protected files)',
+        safe_to_delete: true
+      }
+    });
+    
+  } catch (error) {
+    console.error('Preview temp cleanup error:', error);
+    return c.json({ success: false, message: 'Failed to preview temp cleanup' }, 500);
+  }
+});
+
+// Preview protected files (manual deletion only - never auto-deleted)
+admin.get('/uploads/protected/list', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all protected files (regardless of age)
+    const protectedFiles = await db.db.prepare(`
+      SELECT 
+        id,
+        original_filename,
+        file_size,
+        mime_type,
+        status,
+        created_at,
+        updated_at,
+        customer_id,
+        protection_job_id
+      FROM file_uploads 
+      WHERE status = 'protected'
+      ORDER BY created_at DESC
+    `).all();
+    
+    const files = (protectedFiles.results || []).map(file => ({
+      ...file,
+      file_size_mb: file.file_size ? (file.file_size / (1024 * 1024)).toFixed(2) : '0',
+      age_days: Math.floor((Date.now() - new Date(file.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+      file_type: 'Protected/Wrapped File'
+    }));
+    
+    const totalSize = files.reduce((sum, file) => sum + (file.file_size || 0), 0);
+    const totalSizeMb = (totalSize / (1024 * 1024)).toFixed(2);
+    
+    return c.json({
+      success: true,
+      category: 'protected',
+      protected_files: files,
+      summary: {
+        total_files: files.length,
+        total_size_bytes: totalSize,
+        total_size_mb: totalSizeMb,
+        criteria: 'All protected/wrapped files (manual deletion only)',
+        safe_to_delete: false,
+        warning: 'These are customer deliverables - delete only after customer download'
+      }
+    });
+    
+  } catch (error) {
+    console.error('List protected files error:', error);
+    return c.json({ success: false, message: 'Failed to list protected files' }, 500);
+  }
+});
+
+// Cleanup temporary files only (safe auto-cleanup - excludes protected files)
+admin.post('/uploads/cleanup/temp', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Delete non-protected uploads older than 30 days
     const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     
     const result = await db.db.prepare(`
       DELETE FROM file_uploads 
-      WHERE created_at < ? AND status IN ('failed', 'uploaded', 'protected')
+      WHERE created_at < ? AND status IN ('failed', 'uploaded', 'uploading', 'processing')
     `).bind(cutoffDate.toISOString()).run();
     
     const deletedCount = result.meta.changes || 0;
     
+    // Log admin action (simplified logging)
+    console.log(`Admin ${adminUser.username} cleaned up ${deletedCount} temporary files (cutoff: ${cutoffDate.toISOString()})`);
+    
     return c.json({
       success: true,
-      message: `Cleanup completed. ${deletedCount} files removed.`,
-      deleted_count: deletedCount
+      message: `Temp cleanup completed. ${deletedCount} temporary files removed. Protected files preserved.`,
+      deleted_count: deletedCount,
+      category: 'temporary'
     });
     
   } catch (error) {
-    console.error('Admin cleanup uploads error:', error);
-    return c.json({ success: false, message: 'Failed to cleanup uploads' }, 500);
+    console.error('Admin temp cleanup error:', error);
+    return c.json({ success: false, message: 'Failed to cleanup temporary files' }, 500);
+  }
+});
+
+// Delete specific protected files (manual selection only)
+admin.post('/uploads/protected/delete', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const body = await c.req.json();
+    const fileIds = body.file_ids || [];
+    
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return c.json({ success: false, message: 'No file IDs provided' }, 400);
+    }
+    
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get file details before deletion for logging
+    const placeholders = fileIds.map(() => '?').join(',');
+    const filesToDelete = await db.db.prepare(`
+      SELECT id, original_filename, customer_id FROM file_uploads 
+      WHERE id IN (${placeholders}) AND status = 'protected'
+    `).bind(...fileIds).all();
+    
+    if (!filesToDelete.results || filesToDelete.results.length === 0) {
+      return c.json({ success: false, message: 'No protected files found with provided IDs' }, 404);
+    }
+    
+    // Delete the protected files
+    const result = await db.db.prepare(`
+      DELETE FROM file_uploads 
+      WHERE id IN (${placeholders}) AND status = 'protected'
+    `).bind(...fileIds).run();
+    
+    const deletedCount = result.meta.changes || 0;
+    
+    // Log admin action with file details (simplified logging)
+    console.log(`Admin ${adminUser.username} manually deleted ${deletedCount} protected files`);
+
+    
+    return c.json({
+      success: true,
+      message: `${deletedCount} protected file(s) deleted successfully.`,
+      deleted_count: deletedCount,
+      category: 'protected',
+      deleted_files: filesToDelete.results
+    });
+    
+  } catch (error) {
+    console.error('Delete protected files error:', error);
+    return c.json({ success: false, message: 'Failed to delete protected files' }, 500);
   }
 });
 
@@ -3787,5 +4111,8 @@ admin.get('/licenses/:licenseKey/details', authMiddleware, async (c) => {
     }, 500);
   }
 });
+
+// Note: System health monitoring now handled by SystemHealthMonitor utility
+// Real-time database health checks, response time tracking, and uptime calculation
 
 export default admin;
