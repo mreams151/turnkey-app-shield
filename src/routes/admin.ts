@@ -577,10 +577,8 @@ admin.get('/customers', authMiddleware, async (c) => {
     let countQuery = 'SELECT COUNT(*) as total FROM customers c';
     const params: any[] = [];
 
-    // Filter out revoked (deleted) customers
-    query += ` WHERE c.status != 'revoked'`;
-    countQuery += ` WHERE status != 'revoked'`;
-    let hasWhere = true;
+    // Only filter out revoked customers if not specifically requesting them
+    let hasWhere = false;
 
     if (search) {
       // Search by name, email, and license key
@@ -603,6 +601,12 @@ admin.get('/customers', authMiddleware, async (c) => {
       query += `${whereClause} c.status = ?`;
       countQuery += `${whereClause} status = ?`;
       params.push(status);
+      hasWhere = true;
+    } else {
+      // If no specific status filter is set, filter out revoked customers by default
+      const whereClause = hasWhere ? ` AND` : ` WHERE`;
+      query += `${whereClause} c.status != 'revoked'`;
+      countQuery += `${whereClause} status != 'revoked'`;
       hasWhere = true;
     }
 
