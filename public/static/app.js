@@ -24,7 +24,6 @@ class TurnkeyShield {
             // Store system info for later use
             this.systemInfo = info;
             
-            console.log('Turnkey Software Shield v' + info.version + ' loaded');
         } catch (error) {
             console.error('Failed to load system info:', error);
         }
@@ -35,7 +34,6 @@ class TurnkeyShield {
         document.querySelectorAll('a[href^="/"]').forEach(link => {
             link.addEventListener('click', (e) => {
                 const href = link.getAttribute('href');
-                console.log('Navigation:', href);
                 
                 // Track internal navigation
                 this.trackEvent('navigation', { destination: href });
@@ -173,7 +171,6 @@ class TurnkeyShield {
     // Event tracking for analytics
     trackEvent(eventName, data = {}) {
         // In a production app, you might send this to analytics services
-        console.log('Event tracked:', eventName, data);
         
         // Store in localStorage for basic tracking
         const events = JSON.parse(localStorage.getItem('turnkey_events') || '[]');

@@ -325,13 +325,13 @@ admin.post('/auth', async (c) => {
     const body = await c.req.json();
     
     // Accept both username/password and email/password for compatibility
-    const email = body.email || body.username;
+    const username = body.username || body.email;
     const password = body.password;
     
-    if (!email || !password) {
+    if (!username || !password) {
       return c.json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Username and password are required'
       }, 400);
     }
 
@@ -340,7 +340,7 @@ admin.post('/auth', async (c) => {
     // Get admin user by email or username (accept both)
     const admin = await db.db.prepare(`
       SELECT * FROM admin_users WHERE (email = ? OR username = ?) AND is_active = 1
-    `).bind(email, email).first<any>();
+    `).bind(username, username).first<any>();
     
     if (!admin) {
       return c.json({

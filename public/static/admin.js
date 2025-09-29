@@ -70,18 +70,26 @@ class AdminPanel {
                         <p class="mt-2 text-center text-sm text-gray-600">
                             TurnkeyAppShield Administration
                         </p>
+                        <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <p class="text-center text-sm text-blue-800">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                <strong>Default Credentials:</strong><br>
+                                Username: <code class="bg-white px-1 rounded">admin</code><br>
+                                Password: <code class="bg-white px-1 rounded">admin123</code>
+                            </p>
+                        </div>
                     </div>
                     <form class="mt-8 space-y-6" id="login-form">
                         <div class="rounded-md shadow-sm -space-y-px">
                             <div>
-                                <input id="username" name="username" type="email" required
+                                <input id="username" name="username" type="text" required
                                     class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
-                                    placeholder="Email (admin@example.com)">
+                                    placeholder="Username: admin" value="admin">
                             </div>
                             <div>
                                 <input id="password" name="password" type="password" required
                                     class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
-                                    placeholder="Password">
+                                    placeholder="Password: admin123">
                             </div>
                         </div>
 
@@ -118,28 +126,19 @@ class AdminPanel {
         errorDiv.classList.add('hidden');
 
         try {
-            console.log('=== STARTING LOGIN PROCESS ===');
-            console.log('Username:', username);
-            console.log('API Base URL:', this.apiBaseUrl);
             
             const response = await axios.post(`${this.apiBaseUrl}/admin/auth`, {
-                email: username, // Backend expects email field
+                username: username, // Send username field
                 password
             });
-            console.log('=== LOGIN API RESPONSE ===', response.data);
 
             if (response.data.success) {
-                console.log('=== LOGIN SUCCESSFUL ===');
                 this.token = response.data.token;
                 this.currentUser = response.data.admin || response.data.user;  // Handle both formats
                 localStorage.setItem('admin_token', this.token);
                 
-                console.log('Token stored:', this.token);
-                console.log('Current user:', this.currentUser);
                 
-                console.log('=== STARTING DASHBOARD LOAD ===');
                 await this.loadDashboard();
-                console.log('=== DASHBOARD LOAD COMPLETED ===');
             } else {
                 throw new Error(response.data.message || 'Login failed');
             }
@@ -158,35 +157,24 @@ class AdminPanel {
     }
 
     async loadDashboard() {
-        console.log('=== LOAD DASHBOARD START ===');
         this.dashboardRendered = false; // Reset flag before loading
         this.showLoading();
         
         try {
-            console.log('=== MAKING DASHBOARD API CALL ===');
-            console.log('Calling endpoint:', '/admin/dashboard');
-            console.log('Using authenticated apiCall method');
             
             const response = await this.apiCall('/admin/dashboard');
-            console.log('=== DASHBOARD API RESPONSE ===', response);
             
             if (response.success) {
-                console.log('=== DASHBOARD API SUCCESS ===');
-                console.log('Dashboard data received:', response.data);
                 
-                console.log('=== RENDERING MAIN LAYOUT ===');
                 try {
                     this.renderMainLayout();
-                    console.log('=== MAIN LAYOUT RENDERED SUCCESSFULLY ===');
                 } catch (layoutError) {
                     console.error('=== MAIN LAYOUT ERROR ===', layoutError);
                     throw new Error('Failed to render main layout: ' + layoutError.message);
                 }
                 
-                console.log('=== SHOWING DASHBOARD ===');
                 try {
                     this.showDashboard(response.data);
-                    console.log('=== DASHBOARD RENDER COMPLETE ===');
                 } catch (dashboardError) {
                     console.error('=== DASHBOARD SHOW ERROR ===', dashboardError);
                     throw new Error('Failed to show dashboard: ' + dashboardError.message);
@@ -253,7 +241,6 @@ class AdminPanel {
         
         // Only prevent render if layout exists and is not empty
         if (this.dashboardRendered && app && app.innerHTML.includes('nav') && app.innerHTML.includes('sidebar')) {
-            console.log('Main layout already rendered, skipping');
             return;
         }
         
@@ -407,7 +394,6 @@ class AdminPanel {
             return;
         }
         
-        console.log('Rendering dashboard content with data:', data);
         content.innerHTML = `
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
@@ -549,12 +535,10 @@ class AdminPanel {
 
     async updateValidationChart(period) {
         try {
-            console.log('Loading chart data for period:', period);
             const response = await this.apiCall(`/admin/charts/validations?period=${period}`);
             
             if (response.success && response.data) {
                 const data = response.data;
-                console.log('Chart data loaded:', data);
                 
                 if (this.charts.validation) {
                     this.charts.validation.data.labels = data.labels;
@@ -612,16 +596,11 @@ class AdminPanel {
 
     async loadCustomers() {
         try {
-            console.log('Loading customers...');
-            console.log('Using simple API call (no auth required)');
             
             const response = await this.apiCall('/admin/customers?status=active');
-            console.log('Customers response:', response);
             
             const customers = response.success ? response.customers : [];
-            console.log('Customers data:', customers);
             
-            console.log('About to call renderCustomersTable');
             this.renderCustomersTable(customers);
         } catch (error) {
             console.error('Failed to load customers:', error);
@@ -717,9 +696,7 @@ class AdminPanel {
     }
 
     renderCustomersTable(customers) {
-        console.log('renderCustomersTable called with', customers.length, 'customers');
         const content = document.getElementById('customers-content');
-        console.log('Content element found:', !!content);
         
         try {
             content.innerHTML = `
@@ -919,19 +896,13 @@ class AdminPanel {
             document.getElementById('product-filter').addEventListener('change', () => this.filterCustomers());
             document.getElementById('status-filter').addEventListener('change', () => this.filterCustomers());
             
-            console.log('Template rendering completed successfully');
             
             // Debug: Check if checkbox elements exist in HTML
             const generatedHTML = content.innerHTML;
-            console.log('Checkbox in HTML:', generatedHTML.includes('select-all-customers'));
-            console.log('Customer checkbox class in HTML:', generatedHTML.includes('customer-checkbox'));
             
             // Debug: Show first part of generated HTML to see table structure
-            console.log('First 500 chars of HTML:', generatedHTML.substring(0, 500));
             
             // Debug: Check specifically for the table header
-            console.log('Table header includes checkbox th:', generatedHTML.includes('<th class="px-4 py-3 text-left">'));
-            console.log('Table header includes input checkbox:', generatedHTML.includes('<input type="checkbox" id="select-all-customers"'));
             
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
@@ -946,10 +917,8 @@ class AdminPanel {
 
     // Setup event listeners for bulk selection functionality
     setupBulkSelectionListeners() {
-        console.log('setupBulkSelectionListeners called');
         // Setup select-all checkbox
         const selectAllCheckbox = document.getElementById('select-all-customers');
-        console.log('Select-all checkbox found:', !!selectAllCheckbox);
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', () => {
                 this.toggleSelectAll();
@@ -958,7 +927,6 @@ class AdminPanel {
 
         // Setup individual customer checkboxes
         const customerCheckboxes = document.querySelectorAll('.customer-checkbox');
-        console.log('Customer checkboxes found:', customerCheckboxes.length);
         customerCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', () => {
                 this.updateSelectionCount();
@@ -1107,11 +1075,8 @@ class AdminPanel {
 
     // Render only the table content without filter controls (for filtering)
     renderCustomersTableOnly(customers) {
-        console.log('renderCustomersTableOnly called with', customers.length, 'customers');
         const tableContainer = document.querySelector('#customers-content .overflow-x-auto table tbody');
-        console.log('Table container found:', !!tableContainer);
         if (tableContainer) {
-            console.log('About to update tbody with', customers.length, 'customers');
             try {
                 // Simple template without complex method calls to test
                 const htmlContent = customers.length > 0 ? customers.map(customer => 
@@ -1169,22 +1134,15 @@ class AdminPanel {
                 </tr>
             `;
                 
-                console.log('Generated HTML contains checkbox:', htmlContent.includes('customer-checkbox'));
-                console.log('About to set innerHTML');
                 tableContainer.innerHTML = htmlContent;
-                console.log('innerHTML set successfully');
                 
                 // Debug: Check immediately after setting innerHTML
                 const checkboxesImmediately = tableContainer.querySelectorAll('.customer-checkbox').length;
-                console.log('Checkboxes immediately after innerHTML:', checkboxesImmediately);
                 
                 // Debug: Check the actual HTML in the DOM
-                console.log('First 200 chars of actual DOM HTML:', tableContainer.innerHTML.substring(0, 200));
                 
                 // If checkboxes are missing, try to add them manually using DOM methods  
-                console.log('Checking if DOM manipulation needed. Checkboxes found:', checkboxesImmediately);
                 if (checkboxesImmediately === 0) {
-                    console.log('Checkboxes missing! Adding manually via DOM manipulation...');
                     const rows = tableContainer.querySelectorAll('tr');
                     rows.forEach((row, index) => {
                         if (index < customers.length) {
@@ -1207,22 +1165,17 @@ class AdminPanel {
                             // Insert as first TD in the row
                             row.insertBefore(checkboxTd, row.firstChild);
                             
-                            console.log('Added checkbox TD for customer:', customer.id);
                         }
                     });
                     
                     const checkboxesAfterManual = tableContainer.querySelectorAll('.customer-checkbox').length;
-                    console.log('Checkboxes after manual addition:', checkboxesAfterManual);
                 } else {
-                    console.log('Checkboxes already present, no DOM manipulation needed');
                 }
                 
                 // Double-check: Always ensure checkboxes exist after any operation
                 setTimeout(() => {
                     const finalCheckboxCount = tableContainer.querySelectorAll('.customer-checkbox').length;
-                    console.log('Final checkbox count after all operations:', finalCheckboxCount);
                     if (finalCheckboxCount === 0) {
-                        console.log('WARNING: No checkboxes found after renderCustomersTableOnly!');
                     }
                 }, 20);
                 
@@ -1238,7 +1191,6 @@ class AdminPanel {
         // Debug: Check if checkboxes exist after renderCustomersTableOnly
         setTimeout(() => {
             const checkboxCount = document.querySelectorAll('.customer-checkbox').length;
-            console.log('Checkboxes after renderCustomersTableOnly:', checkboxCount);
         }, 10);
     }
 
@@ -1267,13 +1219,11 @@ class AdminPanel {
 
     // Filter customers by product and status
     async filterCustomers() {
-        console.log('filterCustomers() called');
         const productFilter = document.getElementById('product-filter').value;
         const statusFilter = document.getElementById('status-filter').value;
         // Preserve current search term if any
         const searchInput = document.getElementById('customer-search');
         const currentSearchTerm = searchInput ? searchInput.value : '';
-        console.log('Filtering by product:', productFilter, 'status:', statusFilter, 'search:', currentSearchTerm);
         
         try {
             let endpoint = '/admin/customers';
@@ -1300,8 +1250,13 @@ class AdminPanel {
             const response = await this.apiCall(endpoint);
             const customers = response.success ? response.customers : [];
             
-            // Use the same rendering method as initial load to ensure consistency
-            this.renderCustomersTable(customers);
+            // Use renderCustomersTableOnly to preserve checkboxes and filter controls
+            this.renderCustomersTableOnly(customers);
+            
+            // Re-setup checkbox event listeners after table update
+            setTimeout(() => {
+                this.setupBulkSelectionListeners();
+            }, 100);
             
             // Restore search term after table rebuild
             if (currentSearchTerm) {
@@ -1341,7 +1296,6 @@ class AdminPanel {
     // View customer details (like your old system's details page)
     async viewCustomerDetails(customerId) {
         try {
-            console.log('Viewing customer details:', customerId);
             
             const response = await this.simpleApiCall(`/api/admin/simple/customers/${customerId}`);
             if (!response.success) {
@@ -1533,7 +1487,6 @@ class AdminPanel {
 
     async editCustomer(customerId) {
         try {
-            console.log('Editing customer:', customerId);
             
             // Get customer data first
             const response = await this.apiCall(`/admin/customers/${customerId}`);
@@ -1552,7 +1505,6 @@ class AdminPanel {
 
     async deleteCustomer(customerId) {
         try {
-            console.log('Deleting customer:', customerId);
             
             if (!confirm('Are you sure you want to delete this customer? This action cannot be undone.')) {
                 return;
@@ -1806,7 +1758,6 @@ class AdminPanel {
         errorDiv.classList.add('hidden');
 
         try {
-            console.log('Updating customer with data:', { name, email, status, notes: notes || null });
             
             const response = await this.apiCall(`/admin/customers/${customerId}`, 'PUT', {
                 name: name,
@@ -2269,7 +2220,6 @@ class AdminPanel {
 
     async editProduct(productId) {
         try {
-            console.log('Editing product:', productId);
             
             // Get product data first
             const response = await this.apiCall(`/admin/products/${productId}`);
@@ -2349,10 +2299,6 @@ class AdminPanel {
 
                     const deleteResponse = await this.apiCall(`/admin/products/${productId}/permanent`, 'DELETE');
                     
-                    console.log('=== DELETE RESPONSE DEBUG ===');
-                    console.log('deleteResponse:', deleteResponse);
-                    console.log('deleteResponse.success:', deleteResponse.success);
-                    console.log('deleteResponse.message:', deleteResponse.message);
                     
                     if (deleteResponse.success) {
                         this.showNotification(`Product "${productName}" permanently deleted from database!`, 'success');
@@ -2567,7 +2513,6 @@ class AdminPanel {
 
     async showProductDetails(productId) {
         try {
-            console.log('Viewing product details:', productId);
             
             // Get product data
             const response = await this.apiCall(`/admin/products/${productId}`);
@@ -2915,13 +2860,10 @@ class AdminPanel {
         if (!rulesList) return;
 
         try {
-            console.log('Loading rules from API...');
             // Use the simple API endpoint for rules (no auth required)
             const response = await this.simpleApiCall('/api/admin/simple/rules');
-            console.log('Rules API response:', response);
             
             if (response.success && response.data) {
-                console.log('Found', response.data.length, 'rules');
                 if (response.data.length === 0) {
                     rulesList.innerHTML = `
                         <div class="text-center text-gray-500 py-8">
@@ -3652,7 +3594,6 @@ class AdminPanel {
                 
                 // Force refresh the rules list after a short delay to ensure backend consistency
                 setTimeout(async () => {
-                    console.log('Force refreshing rules after rule creation...');
                     await this.loadRules();
                 }, 500);
             } else {
@@ -3667,19 +3608,16 @@ class AdminPanel {
 
     async editRule(ruleId) {
         try {
-            console.log('Editing rule:', ruleId);
             this.showNotification('Loading rule template for editing...', 'info');
             
             // Get the rule data from API
             const response = await this.apiCall(`/admin/rules/${ruleId}`, 'GET');
-            console.log('Edit rule API response:', response);
             
             if (!response.success) {
                 throw new Error(response.message || 'Failed to load rule template');
             }
 
             const rule = response.rule;
-            console.log('Rule data loaded:', rule);
             
             // Show the add rule form but populated with existing data
             this.showAddRule();
@@ -3799,11 +3737,9 @@ class AdminPanel {
     async deleteRule(ruleId) {
         // Get rule name for confirmation
         try {
-            console.log('Deleting rule:', ruleId);
             this.showNotification('Loading rule template for deletion...', 'info');
             
             const response = await this.apiCall(`/admin/rules/${ruleId}`, 'GET');
-            console.log('Delete rule - get rule response:', response);
             
             const ruleName = response.success ? response.rule.name : 'this rule template';
 
@@ -3811,7 +3747,6 @@ class AdminPanel {
                 this.showNotification('Deleting rule template...', 'info');
 
                 const deleteResponse = await this.apiCall(`/admin/rules/${ruleId}`, 'DELETE');
-                console.log('Delete rule API response:', deleteResponse);
                 
                 if (deleteResponse.success) {
                     this.showNotification(`Rule template "${ruleName}" deleted successfully!`, 'success');
@@ -3959,7 +3894,6 @@ class AdminPanel {
                 url += `?severity=${severityFilter}`;
             }
 
-            console.log('Loading security events from:', url);
             const response = await this.apiCall(url);
             
             if (response.success) {
@@ -4049,7 +3983,6 @@ class AdminPanel {
                 url += `?severity=${severity}`;
             }
 
-            console.log('Exporting security events with URL:', url);
             
             this.showNotification('Export ready! Download will start shortly...', 'success');
             
@@ -4312,7 +4245,6 @@ class AdminPanel {
             // Extract meaningful error message from server response
             if (error.response?.data) {
                 const serverMessage = error.response.data.message || error.response.data.error;
-                console.log('Extracted server message:', serverMessage);
                 if (serverMessage) {
                     const enhancedError = new Error(serverMessage);
                     enhancedError.status = error.response.status;
@@ -4775,22 +4707,15 @@ class AdminPanel {
     }
 
     async loadUploads() {
-        console.log('=== UPLOADS LOAD START ===');
-        console.log('Token available:', !!this.token);
-        console.log('API Base URL:', this.apiBaseUrl);
         
         try {
-            console.log('Making API call to /admin/uploads/list');
             const response = await this.apiCall('/admin/uploads/list', 'GET');
-            console.log('Uploads API response:', response);
             
             if (response.success) {
-                console.log('Uploads loaded successfully, count:', response.uploads?.length || 0);
                 this.uploads = response.uploads || [];
                 this.displayUploads();
                 await this.loadUploadStats();
             } else {
-                console.log('Uploads API returned success:false');
                 this.uploads = [];
                 this.displayUploads();
                 this.showNotification('No uploads found', 'info');
@@ -4998,7 +4923,6 @@ class AdminPanel {
 
     async previewTempCleanup() {
         try {
-            console.log('Previewing temp file cleanup...');
             const response = await this.apiCall('/admin/uploads/cleanup/temp/preview');
             
             if (response.success) {
@@ -5158,7 +5082,6 @@ class AdminPanel {
 
     async manageProtectedFiles() {
         try {
-            console.log('Loading protected files...');
             const response = await this.apiCall('/admin/uploads/protected/list');
             
             if (response.success) {
@@ -6720,7 +6643,6 @@ This action cannot be undone.`;
 
     async searchCustomers(searchTerm) {
         try {
-            console.log('Searching customers for:', searchTerm);
 
             let endpoint = '/admin/customers';
             const params = [];
@@ -6746,12 +6668,10 @@ This action cannot be undone.`;
                 endpoint += `?${params.join('&')}`;
             }
 
-            console.log('Search endpoint:', endpoint);
 
             const response = await this.apiCall(endpoint);
             const customers = response.success ? response.customers : [];
             
-            console.log('Search results:', customers);
 
             // Update only the table content, not the entire interface
             this.renderCustomersTableOnly(customers);
