@@ -850,7 +850,10 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        ${this.renderStatusBadge(customer.status)}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full status-badge-${customer.status?.toLowerCase() || 'unknown'}" 
+                                              data-status="${customer.status || 'unknown'}">
+                                            ${customer.status ? customer.status.toUpperCase() : 'UNKNOWN'}
+                                        </span>
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <div class="flex gap-1">
@@ -904,6 +907,7 @@ class AdminPanel {
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
+                this.applyStatusBadgeColors();
             }, 100);
         } catch (error) {
             console.error('Error in renderCustomersTable template:', error);
@@ -1071,6 +1075,48 @@ class AdminPanel {
     }
 
     // Render only the table content without filter controls (for filtering)
+    // Apply status badge colors after rendering
+    applyStatusBadgeColors() {
+        const badges = document.querySelectorAll('[data-status]');
+        badges.forEach(badge => {
+            const status = badge.getAttribute('data-status')?.toLowerCase();
+            switch(status) {
+                case 'active':
+                    badge.style.backgroundColor = '#dcfce7';
+                    badge.style.color = '#166534';
+                    badge.style.border = '1px solid #bbf7d0';
+                    break;
+                case 'suspended':
+                    badge.style.backgroundColor = '#fef3c7';
+                    badge.style.color = '#92400e';
+                    badge.style.border = '1px solid #fde68a';
+                    break;
+                case 'revoked':
+                case 'expired':
+                case 'invalid':
+                    badge.style.backgroundColor = '#fee2e2';
+                    badge.style.color = '#991b1b';
+                    badge.style.border = '1px solid #fecaca';
+                    break;
+                case 'pending':
+                    badge.style.backgroundColor = '#dbeafe';
+                    badge.style.color = '#1e40af';
+                    badge.style.border = '1px solid #bfdbfe';
+                    break;
+                case 'trial':
+                    badge.style.backgroundColor = '#ede9fe';
+                    badge.style.color = '#7c3aed';
+                    badge.style.border = '1px solid #c4b5fd';
+                    break;
+                default:
+                    badge.style.backgroundColor = '#f3f4f6';
+                    badge.style.color = '#374151';
+                    badge.style.border = '1px solid #d1d5db';
+                    break;
+            }
+        });
+    }
+
     renderCustomersTableOnly(customers) {
         const tableContainer = document.querySelector('#customers-content .overflow-x-auto table tbody');
         if (tableContainer) {
@@ -1184,6 +1230,7 @@ class AdminPanel {
         
         // Re-setup event listeners after table re-render
         this.setupBulkSelectionListeners();
+        this.applyStatusBadgeColors();
         
         // Debug: Check if checkboxes exist after renderCustomersTableOnly
         setTimeout(() => {
@@ -1322,6 +1369,7 @@ class AdminPanel {
             // Re-setup checkbox event listeners after table update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
+                this.applyStatusBadgeColors();
             }, 100);
             
             // Restore search term after table rebuild
