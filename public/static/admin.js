@@ -850,11 +850,7 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${this.getStatusBadgeClass(customer.status)}" 
-                                              style="${this.getStatusBadgeStyle(customer.status)}">
-                                            ${customer.status.toUpperCase()}
-                                        </span>
+                                        ${this.renderStatusBadge(customer.status)}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <div class="flex gap-1">
@@ -1239,24 +1235,52 @@ class AdminPanel {
         }
     }
 
-    // Helper method to get status badge inline styles (fallback for CSS conflicts)
-    getStatusBadgeStyle(status) {
-        switch(status?.toLowerCase()) {
+    // Render complete status badge with proper styling
+    renderStatusBadge(status) {
+        const statusLower = (status || '').toLowerCase();
+        let bgColor, textColor, borderColor;
+        
+        switch(statusLower) {
             case 'active':
-                return 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;';
+                bgColor = '#dcfce7'; // green-100
+                textColor = '#166534'; // green-800
+                borderColor = '#bbf7d0'; // green-200
+                break;
             case 'suspended': 
-                return 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;';
+                bgColor = '#fef3c7'; // yellow-100
+                textColor = '#92400e'; // yellow-800
+                borderColor = '#fde68a'; // yellow-200
+                break;
             case 'revoked':
             case 'expired':
             case 'invalid':
-                return 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;';
+                bgColor = '#fee2e2'; // red-100
+                textColor = '#991b1b'; // red-800
+                borderColor = '#fecaca'; // red-200
+                break;
             case 'pending':
-                return 'background-color: #dbeafe !important; color: #1e40af !important; border: 1px solid #bfdbfe !important;';
+                bgColor = '#dbeafe'; // blue-100
+                textColor = '#1e40af'; // blue-800
+                borderColor = '#bfdbfe'; // blue-200
+                break;
             case 'trial':
-                return 'background-color: #ede9fe !important; color: #7c3aed !important; border: 1px solid #c4b5fd !important;';
+                bgColor = '#ede9fe'; // purple-100
+                textColor = '#7c3aed'; // purple-800
+                borderColor = '#c4b5fd'; // purple-200
+                break;
             default:
-                return 'background-color: #f3f4f6 !important; color: #374151 !important; border: 1px solid #d1d5db !important;';
+                bgColor = '#f3f4f6'; // gray-100
+                textColor = '#374151'; // gray-800
+                borderColor = '#d1d5db'; // gray-200
+                break;
         }
+        
+        return `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" 
+                      style="background-color: ${bgColor} !important; 
+                             color: ${textColor} !important; 
+                             border: 1px solid ${borderColor} !important;">
+                    ${status ? status.toUpperCase() : 'UNKNOWN'}
+                </span>`;
     }
 
     // Filter customers by product and status
