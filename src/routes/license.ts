@@ -677,7 +677,6 @@ license.post('/validate', async (c) => {
     return c.json(response, 200);
 
   } catch (error) {
-    console.error('License validation error:', error);
     
     // Log error if we have database access
     if (db && logData.license_key) {
@@ -693,7 +692,6 @@ license.post('/validate', async (c) => {
           response_time: Date.now() - startTime
         });
       } catch (logError) {
-        console.error('Failed to log error:', logError);
       }
     }
 
@@ -795,7 +793,6 @@ license.post('/create', async (c) => {
     });
 
   } catch (error) {
-    console.error('License creation error:', error);
     return c.json({
       success: false,
       message: 'Failed to create license'
@@ -845,7 +842,6 @@ license.get('/:license_key', async (c) => {
     });
 
   } catch (error) {
-    console.error('License lookup error:', error);
     return c.json({
       success: false,
       message: 'Failed to retrieve license'
@@ -910,7 +906,6 @@ license.put('/:license_key/status', async (c) => {
     });
 
   } catch (error) {
-    console.error('License status update error:', error);
     return c.json({
       success: false,
       message: 'Failed to update license status'
@@ -967,7 +962,6 @@ license.get('/:license_key/activity', async (c) => {
     });
 
   } catch (error) {
-    console.error('License activity lookup error:', error);
     return c.json({
       success: false,
       message: 'Failed to retrieve license activity'

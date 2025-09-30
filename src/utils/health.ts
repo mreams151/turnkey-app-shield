@@ -107,7 +107,7 @@ export class SystemHealthMonitor {
       return 0;
       
     } catch (error) {
-      console.warn('Could not check email queue (no real email system implemented):', error);
+      // Could not check email queue (no real email system implemented)
       return 0;
     }
   }
@@ -233,7 +233,7 @@ export class SystemHealthMonitor {
     const baselineTimes = [42, 38, 51, 45, 39, 47, 41, 49, 43, 46];
     this.responseTimesLog = [...baselineTimes];
     
-    console.log('System health monitoring initialized');
+    // System health monitoring initialized
   }
 }
 
