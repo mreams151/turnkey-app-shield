@@ -1,0 +1,42 @@
+CLOUDFLARE D1 CONSOLE BACKUP COMMANDS
+=====================================
+
+Go to: https://dash.cloudflare.com
+Navigate to: Workers & Pages → D1 SQL Database → turnkey-app-shield-production → Console
+
+Run these commands ONE BY ONE and save the results:
+
+1. LIST ALL TABLES:
+SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%';
+
+2. BACKUP CUSTOMERS TABLE:
+SELECT * FROM customers;
+
+3. BACKUP PRODUCTS TABLE:  
+SELECT * FROM products;
+
+4. BACKUP LICENSE RULES:
+SELECT * FROM license_rules;
+
+5. BACKUP ACTIVATION LOGS:
+SELECT * FROM activation_logs;
+
+6. BACKUP SECURITY EVENTS:
+SELECT * FROM security_events;
+
+7. BACKUP ADMIN USERS:
+SELECT * FROM admin_users;
+
+8. GET TABLE SCHEMAS:
+SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE '_cf_%';
+
+SAVE EACH RESULT TO A SEPARATE TEXT FILE:
+- customers-backup.txt
+- products-backup.txt  
+- license-rules-backup.txt
+- activation-logs-backup.txt
+- security-events-backup.txt
+- admin-users-backup.txt
+- table-schemas-backup.txt
+
+These files together form your complete database backup!

@@ -1,0 +1,28 @@
+TurnkeyAppShield Database Backup Information
+============================================
+Created: Tue Sep 30 05:31:40 UTC 2025
+Backup File: COMPLETE_DATABASE_WITH_DATA_20250930_053046.sql
+Database: turnkey-app-shield-production (local)
+
+Tables Backed Up:
+  - customers: 30 rows
+  - products: 15 rows
+  - license_rules: 5 rows
+  - admin_users: 1 rows
+  - licenses: 12 rows
+  - activation_logs: 15 rows
+  - security_events: 6 rows
+  - system_settings: 6 rows
+  - email_templates: 3 rows
+  - api_keys: 0 rows
+  - file_uploads: 0 rows
+  - protection_jobs: 0 rows
+  - data_export_jobs: 34 rows
+  - email_queue: 101 rows
+
+Restoration Instructions:
+1. Create new SQLite database: sqlite3 newdb.db
+2. Run the SQL file: .read COMPLETE_DATABASE_WITH_DATA_20250930_053046.sql
+3. Or: sqlite3 newdb.db < COMPLETE_DATABASE_WITH_DATA_20250930_053046.sql
+
+Note: This backup includes all schemas and data from the local development database.

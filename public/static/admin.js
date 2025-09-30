@@ -851,8 +851,8 @@ class AdminPanel {
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
-                                            ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${this.getStatusBadgeClass(customer.status)}">
+                                            ${customer.status.toUpperCase()}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-sm">
@@ -1215,6 +1215,26 @@ class AdminPanel {
             return this.productsCache[productId].name;
         }
         return `Product ${productId}`;
+    }
+
+    // Helper method to get status badge CSS classes with proper color coding
+    getStatusBadgeClass(status) {
+        switch(status?.toLowerCase()) {
+            case 'active':
+                return 'bg-green-100 text-green-800';
+            case 'suspended': 
+                return 'bg-yellow-100 text-yellow-800';
+            case 'revoked':
+            case 'expired':
+            case 'invalid':
+                return 'bg-red-100 text-red-800';
+            case 'pending':
+                return 'bg-blue-100 text-blue-800';
+            case 'trial':
+                return 'bg-purple-100 text-purple-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
     }
 
     // Filter customers by product and status
