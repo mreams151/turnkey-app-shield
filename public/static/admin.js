@@ -11,9 +11,6 @@ class AdminPanel {
         this.dashboardRendered = false; // Fix for infinite scroll issue
         this.uploads = []; // Initialize uploads array
         
-        // Inject critical CSS for status badges with maximum specificity
-        this.injectStatusBadgeCSS();
-        
         this.init();
     }
 
@@ -57,93 +54,7 @@ class AdminPanel {
         }
     }
 
-    injectStatusBadgeCSS() {
-        // Remove any existing style tag for status badges
-        const existingStyle = document.getElementById('status-badge-styles');
-        if (existingStyle) {
-            existingStyle.remove();
-        }
 
-        // Create and inject new style tag with maximum specificity
-        const style = document.createElement('style');
-        style.id = 'status-badge-styles';
-        style.textContent = `
-            /* CRITICAL: Status badge overrides with maximum CSS specificity */
-            body #admin-app table tbody tr td span.status-badge {
-                display: inline-flex !important;
-                padding: 0.25rem 0.5rem !important;
-                font-size: 0.75rem !important;
-                font-weight: 600 !important;
-                border-radius: 9999px !important;
-                text-transform: uppercase !important;
-            }
-            
-            body #admin-app table tbody tr td span.status-badge.status-badge-active {
-                background-color: #dcfce7 !important;
-                color: #166534 !important;
-                border: 1px solid #bbf7d0 !important;
-            }
-            
-            body #admin-app table tbody tr td span.status-badge.status-badge-suspended {
-                background-color: #fef3c7 !important;
-                color: #92400e !important;
-                border: 1px solid #fde68a !important;
-            }
-            
-            body #admin-app table tbody tr td span.status-badge.status-badge-revoked {
-                background-color: #fee2e2 !important;
-                color: #991b1b !important;
-                border: 1px solid #fecaca !important;
-            }
-            
-            body #admin-app table tbody tr td span.status-badge.status-badge-unknown {
-                background-color: #f3f4f6 !important;
-                color: #374151 !important;
-                border: 1px solid #d1d5db !important;
-            }
-        `;
-        
-        document.head.appendChild(style);
-    }
-
-    applyStatusBadgeStyles() {
-        // Force apply styles using JavaScript after DOM manipulation
-        setTimeout(() => {
-            const badges = document.querySelectorAll('.status-badge');
-            badges.forEach(badge => {
-                const status = badge.getAttribute('data-status') || 'unknown';
-                
-                // Remove all status classes first
-                badge.className = 'status-badge status-badge-' + status;
-                
-                // Force apply styles with JavaScript as backup
-                badge.style.cssText = 'display: inline-flex !important; padding: 0.25rem 0.5rem !important; font-size: 0.75rem !important; font-weight: 600 !important; border-radius: 9999px !important; text-transform: uppercase !important;';
-                
-                switch(status) {
-                    case 'active':
-                        badge.style.backgroundColor = '#dcfce7';
-                        badge.style.color = '#166534';
-                        badge.style.border = '1px solid #bbf7d0';
-                        break;
-                    case 'suspended':
-                        badge.style.backgroundColor = '#fef3c7';
-                        badge.style.color = '#92400e';
-                        badge.style.border = '1px solid #fde68a';
-                        break;
-                    case 'revoked':
-                        badge.style.backgroundColor = '#fee2e2';
-                        badge.style.color = '#991b1b';
-                        badge.style.border = '1px solid #fecaca';
-                        break;
-                    default:
-                        badge.style.backgroundColor = '#f3f4f6';
-                        badge.style.color = '#374151';
-                        badge.style.border = '1px solid #d1d5db';
-                        break;
-                }
-            });
-        }, 100); // Small delay to ensure DOM is ready
-    }
 
     showLogin() {
         this.dashboardRendered = false; // Reset flag when showing login
@@ -941,9 +852,7 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        <span class="status-badge status-badge-${customer.status || 'unknown'}" data-status="${customer.status || 'unknown'}">
-                                            ${(customer.status || 'unknown').toUpperCase()}
-                                        </span>
+                                        ${this.generateStatusBadgeHtml(customer.status)}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <div class="flex gap-1">
@@ -997,8 +906,6 @@ class AdminPanel {
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
-                // CRITICAL: Apply status badge styles after DOM is ready
-                this.applyStatusBadgeStyles();
             }, 100);
         } catch (error) {
             console.error('Error in renderCustomersTable template:', error);
@@ -1328,6 +1235,78 @@ class AdminPanel {
         }
         
         return description;
+    }
+
+    // Generate status badge HTML with hardcoded colors (NUCLEAR SOLUTION)
+    generateStatusBadgeHtml(status) {
+        const statusText = (status || 'unknown').toUpperCase();
+        
+        // Use HTML with hardcoded colors that cannot be overridden
+        if (status === 'active') {
+            return `<div style="
+                width: fit-content;
+                margin: 0;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+                border-radius: 12px;
+                background: linear-gradient(to right, #dcfce7, #dcfce7) !important;
+                color: #166534 !important;
+                border: 1px solid #bbf7d0 !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+                text-shadow: none;
+                letter-spacing: 0.5px;
+            ">ACTIVE</div>`;
+        } else if (status === 'suspended') {
+            return `<div style="
+                width: fit-content;
+                margin: 0;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+                border-radius: 12px;
+                background: linear-gradient(to right, #fef3c7, #fef3c7) !important;
+                color: #92400e !important;
+                border: 1px solid #fde68a !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+                text-shadow: none;
+                letter-spacing: 0.5px;
+            ">SUSPENDED</div>`;
+        } else if (status === 'revoked') {
+            return `<div style="
+                width: fit-content;
+                margin: 0;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+                border-radius: 12px;
+                background: linear-gradient(to right, #fee2e2, #fee2e2) !important;
+                color: #991b1b !important;
+                border: 1px solid #fecaca !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+                text-shadow: none;
+                letter-spacing: 0.5px;
+            ">REVOKED</div>`;
+        } else {
+            return `<div style="
+                width: fit-content;
+                margin: 0;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+                border-radius: 12px;
+                background: linear-gradient(to right, #f3f4f6, #f3f4f6) !important;
+                color: #374151 !important;
+                border: 1px solid #d1d5db !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+                text-shadow: none;
+                letter-spacing: 0.5px;
+            ">${statusText}</div>`;
+        }
     }
 
     // Render only the table content without filter controls (for filtering)
