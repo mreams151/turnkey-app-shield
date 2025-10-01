@@ -669,6 +669,109 @@ admin.get('/customers', authMiddleware, async (c) => {
   }
 });
 
+// Enhanced customer search endpoint
+admin.get('/customers/search', authMiddleware, async (c) => {
+  try {
+    const searchTerm = c.req.query('q') || '';
+    const status = c.req.query('status') || '';
+    const productId = c.req.query('product_id') || '';
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '50');
+    const offset = (page - 1) * limit;
+
+    if (!searchTerm.trim()) {
+      return c.json({
+        success: false,
+        message: 'Search term is required'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Enhanced search query - searches name, email, license key, notes
+    let query = `
+      SELECT c.*, 
+             c.name as display_name,
+             c.registration_date as created_at,
+             (CASE WHEN c.status = 'active' THEN 1 ELSE 0 END) as is_active,
+             1 as license_count,
+             p.name as product_name
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
+      WHERE (
+        c.name LIKE ? OR 
+        c.email LIKE ? OR 
+        c.license_key LIKE ? OR
+        c.notes LIKE ?
+      )
+    `;
+    
+    let countQuery = `
+      SELECT COUNT(*) as total 
+      FROM customers c 
+      LEFT JOIN products p ON c.product_id = p.id
+      WHERE (
+        c.name LIKE ? OR 
+        c.email LIKE ? OR 
+        c.license_key LIKE ? OR
+        c.notes LIKE ?
+      )
+    `;
+
+    const searchPattern = `%${searchTerm.trim()}%`;
+    const params: any[] = [searchPattern, searchPattern, searchPattern, searchPattern];
+
+    // Add additional filters
+    if (status) {
+      query += ` AND c.status = ?`;
+      countQuery += ` AND c.status = ?`;
+      params.push(status);
+    }
+
+    if (productId) {
+      query += ` AND c.product_id = ?`;
+      countQuery += ` AND c.product_id = ?`;
+      params.push(parseInt(productId));
+    }
+
+    query += ` ORDER BY c.registration_date DESC LIMIT ? OFFSET ?`;
+    const queryParams = [...params, limit, offset];
+    const countParams = params.slice(); // Copy for count query
+
+    const [customers, total] = await Promise.all([
+      db.db.prepare(query).bind(...queryParams).all(),
+      db.db.prepare(countQuery).bind(...countParams).first<{ total: number }>()
+    ]);
+
+    // Transform data for frontend
+    const transformedCustomers = (customers.results || []).map(customer => ({
+      ...customer,
+      name: customer.name || customer.display_name,
+      company: null,
+      device_count: 1
+    }));
+
+    return c.json({
+      success: true,
+      customers: transformedCustomers,
+      search_term: searchTerm,
+      pagination: {
+        page,
+        limit,
+        total: total?.total || 0,
+        pages: Math.ceil((total?.total || 0) / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Customer search error:', error);
+    return c.json({ 
+      success: false,
+      message: 'Search failed: ' + error.message
+    }, 500);
+  }
+});
+
 admin.post('/customers', authMiddleware, async (c) => {
   try {
     const body = await c.req.json();
@@ -2627,6 +2730,90 @@ admin.get('/export/:id/download', authMiddleware, async (c) => {
     return c.json({
       success: false,
       message: 'Failed to download export'
+    }, 500);
+  }
+});
+
+// Simple customer export endpoint (for frontend compatibility)
+admin.get('/export/customers', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Create a simple export job for customers
+    const exportName = `customers_export_${Date.now()}`;
+    const exportJob = await db.db.prepare(`
+      INSERT INTO data_export_jobs (
+        export_name, export_type, entity_type, export_filters,
+        columns_selected, created_by, status
+      ) VALUES (?, 'csv', 'customers', '{}', '[]', ?, 'completed')
+    `).bind(exportName, 1).run(); // Use admin user ID 1
+    
+    const exportId = exportJob.meta.last_row_id;
+    
+    return c.json({
+      success: true,
+      export_id: exportId,
+      download_url: `/admin/export/${exportId}/download`,
+      message: 'Export prepared successfully'
+    });
+    
+  } catch (error) {
+    console.error('Customer export error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to prepare customer export'
+    }, 500);
+  }
+});
+
+// Direct customer download endpoint for Excel format
+admin.get('/export/customers/download', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all customers with product info
+    const customers = await db.db.prepare(`
+      SELECT c.*, p.name as product_name
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
+      ORDER BY c.registration_date DESC
+    `).all();
+    
+    // Create CSV content
+    const headers = ['ID', 'Name', 'Email', 'Product', 'License Key', 'Status', 'Registration Date', 'Notes'];
+    let csvContent = headers.join(',') + '\n';
+    
+    (customers.results || []).forEach(customer => {
+      const row = [
+        customer.id || '',
+        `"${(customer.name || '').replace(/"/g, '""')}"`,
+        customer.email || '',
+        `"${(customer.product_name || '').replace(/"/g, '""')}"`,
+        customer.license_key || '',
+        customer.status || '',
+        customer.registration_date || '',
+        `"${(customer.notes || '').replace(/"/g, '""')}"`
+      ];
+      csvContent += row.join(',') + '\n';
+    });
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `customers_export_${timestamp}.csv`;
+    
+    return new Response(csvContent, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': Buffer.byteLength(csvContent, 'utf8').toString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('Customer download error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to download customer data'
     }, 500);
   }
 });

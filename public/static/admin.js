@@ -11,6 +11,9 @@ class AdminPanel {
         this.dashboardRendered = false; // Fix for infinite scroll issue
         this.uploads = []; // Initialize uploads array
         
+        // Inject critical CSS for status badges with maximum specificity
+        this.injectStatusBadgeCSS();
+        
         this.init();
     }
 
@@ -52,6 +55,94 @@ class AdminPanel {
         } catch (error) {
             return false;
         }
+    }
+
+    injectStatusBadgeCSS() {
+        // Remove any existing style tag for status badges
+        const existingStyle = document.getElementById('status-badge-styles');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+
+        // Create and inject new style tag with maximum specificity
+        const style = document.createElement('style');
+        style.id = 'status-badge-styles';
+        style.textContent = `
+            /* CRITICAL: Status badge overrides with maximum CSS specificity */
+            body #admin-app table tbody tr td span.status-badge {
+                display: inline-flex !important;
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.75rem !important;
+                font-weight: 600 !important;
+                border-radius: 9999px !important;
+                text-transform: uppercase !important;
+            }
+            
+            body #admin-app table tbody tr td span.status-badge.status-badge-active {
+                background-color: #dcfce7 !important;
+                color: #166534 !important;
+                border: 1px solid #bbf7d0 !important;
+            }
+            
+            body #admin-app table tbody tr td span.status-badge.status-badge-suspended {
+                background-color: #fef3c7 !important;
+                color: #92400e !important;
+                border: 1px solid #fde68a !important;
+            }
+            
+            body #admin-app table tbody tr td span.status-badge.status-badge-revoked {
+                background-color: #fee2e2 !important;
+                color: #991b1b !important;
+                border: 1px solid #fecaca !important;
+            }
+            
+            body #admin-app table tbody tr td span.status-badge.status-badge-unknown {
+                background-color: #f3f4f6 !important;
+                color: #374151 !important;
+                border: 1px solid #d1d5db !important;
+            }
+        `;
+        
+        document.head.appendChild(style);
+    }
+
+    applyStatusBadgeStyles() {
+        // Force apply styles using JavaScript after DOM manipulation
+        setTimeout(() => {
+            const badges = document.querySelectorAll('.status-badge');
+            badges.forEach(badge => {
+                const status = badge.getAttribute('data-status') || 'unknown';
+                
+                // Remove all status classes first
+                badge.className = 'status-badge status-badge-' + status;
+                
+                // Force apply styles with JavaScript as backup
+                badge.style.cssText = 'display: inline-flex !important; padding: 0.25rem 0.5rem !important; font-size: 0.75rem !important; font-weight: 600 !important; border-radius: 9999px !important; text-transform: uppercase !important;';
+                
+                switch(status) {
+                    case 'active':
+                        badge.style.backgroundColor = '#dcfce7';
+                        badge.style.color = '#166534';
+                        badge.style.border = '1px solid #bbf7d0';
+                        break;
+                    case 'suspended':
+                        badge.style.backgroundColor = '#fef3c7';
+                        badge.style.color = '#92400e';
+                        badge.style.border = '1px solid #fde68a';
+                        break;
+                    case 'revoked':
+                        badge.style.backgroundColor = '#fee2e2';
+                        badge.style.color = '#991b1b';
+                        badge.style.border = '1px solid #fecaca';
+                        break;
+                    default:
+                        badge.style.backgroundColor = '#f3f4f6';
+                        badge.style.color = '#374151';
+                        badge.style.border = '1px solid #d1d5db';
+                        break;
+                }
+            });
+        }, 100); // Small delay to ensure DOM is ready
     }
 
     showLogin() {
@@ -850,10 +941,8 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" 
-                                              style="${customer.status === 'active' ? 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;' : customer.status === 'suspended' ? 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;' : 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;'}">
-                                            ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
+                                        <span class="status-badge status-badge-${customer.status || 'unknown'}" data-status="${customer.status || 'unknown'}">
+                                            ${(customer.status || 'unknown').toUpperCase()}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-sm">
@@ -908,6 +997,8 @@ class AdminPanel {
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
+                // CRITICAL: Apply status badge styles after DOM is ready
+                this.applyStatusBadgeStyles();
             }, 100);
         } catch (error) {
             console.error('Error in renderCustomersTable template:', error);
@@ -1072,6 +1163,171 @@ class AdminPanel {
             console.error('Bulk delete error:', error);
             this.showNotification('Failed to delete customers', 'error');
         }
+    }
+
+    // Enhanced customer search functionality
+    handleSearchInput(searchTerm) {
+        // Debounce search to avoid too many API calls
+        clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(() => {
+            this.searchCustomers(searchTerm);
+        }, 300);
+    }
+
+    async searchCustomers(searchTerm) {
+        try {
+            // Store the current search term
+            this.currentSearchTerm = searchTerm?.trim() || '';
+            
+            // If empty search, load all customers
+            if (!this.currentSearchTerm) {
+                await this.loadCustomers();
+                return;
+            }
+
+            // Show loading state
+            const customersContent = document.getElementById('customers-content');
+            if (customersContent) {
+                // Just update the table, not the whole content
+                const tableContainer = customersContent.querySelector('.overflow-x-auto');
+                if (tableContainer) {
+                    tableContainer.innerHTML = `
+                        <div class="text-center py-8">
+                            <i class="fas fa-search text-gray-400 text-2xl mb-2"></i>
+                            <p class="text-gray-500">Searching customers...</p>
+                        </div>
+                    `;
+                }
+            }
+
+            // Perform search via API
+            const response = await this.apiCall(`/admin/customers/search?q=${encodeURIComponent(this.currentSearchTerm)}`);
+            
+            if (response.success) {
+                // Re-render the full customers page with search results
+                this.allCustomers = response.customers || [];
+                this.renderCustomersTable(this.allCustomers);
+                
+                // Update search result count
+                const resultCount = this.allCustomers.length;
+                this.showNotification(`Found ${resultCount} customer${resultCount !== 1 ? 's' : ''} matching "${this.currentSearchTerm}"`, 'info');
+            } else {
+                throw new Error(response.message || 'Search failed');
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            this.showNotification('Search failed: ' + error.message, 'error');
+            
+            // Show error state
+            const customersContent = document.getElementById('customers-content');
+            if (customersContent) {
+                const tableContainer = customersContent.querySelector('.overflow-x-auto');
+                if (tableContainer) {
+                    tableContainer.innerHTML = `
+                        <div class="text-center py-8">
+                            <i class="fas fa-exclamation-triangle text-red-400 text-2xl mb-2"></i>
+                            <p class="text-red-600">Search failed</p>
+                            <p class="text-sm text-gray-500 mt-2">${error.message}</p>
+                        </div>
+                    `;
+                }
+            }
+        }
+    }
+
+    clearSearch() {
+        // Clear search input
+        const searchInput = document.getElementById('customer-search');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        
+        // Clear search term and reload all customers
+        this.currentSearchTerm = '';
+        this.loadCustomers();
+        this.showNotification('Search cleared', 'info');
+    }
+
+    // Enhanced filter functionality
+    async filterCustomers() {
+        try {
+            // Get current filter values
+            const statusFilter = document.getElementById('status-filter')?.value || 'active';
+            const productFilter = document.getElementById('product-filter')?.value || '';
+            
+            // Build filter params
+            const filterParams = new URLSearchParams();
+            if (statusFilter && statusFilter !== 'all') {
+                filterParams.append('status', statusFilter);
+            }
+            if (productFilter) {
+                filterParams.append('product_id', productFilter);
+            }
+            
+            // Add current search term if exists
+            if (this.currentSearchTerm) {
+                filterParams.append('q', this.currentSearchTerm);
+            }
+
+            // Show loading state
+            const customersContent = document.getElementById('customers-content');
+            if (customersContent) {
+                const tableContainer = customersContent.querySelector('.overflow-x-auto');
+                if (tableContainer) {
+                    tableContainer.innerHTML = `
+                        <div class="text-center py-8">
+                            <i class="fas fa-filter text-gray-400 text-2xl mb-2"></i>
+                            <p class="text-gray-500">Filtering customers...</p>
+                        </div>
+                    `;
+                }
+            }
+
+            // Make API call with filters
+            const url = filterParams.toString() ? 
+                `/admin/customers?${filterParams.toString()}` : 
+                '/admin/customers';
+            
+            const response = await this.apiCall(url);
+            
+            if (response.success) {
+                this.allCustomers = response.customers || [];
+                this.renderCustomersTable(this.allCustomers);
+                
+                // Update result count
+                const resultCount = this.allCustomers.length;
+                const filterDescription = this.getFilterDescription(statusFilter, productFilter);
+                this.showNotification(`${resultCount} customer${resultCount !== 1 ? 's' : ''} ${filterDescription}`, 'info');
+            } else {
+                throw new Error(response.message || 'Filter failed');
+            }
+        } catch (error) {
+            console.error('Filter error:', error);
+            this.showNotification('Filter failed: ' + error.message, 'error');
+        }
+    }
+
+    getFilterDescription(statusFilter, productFilter) {
+        let description = 'found';
+        const parts = [];
+        
+        if (statusFilter && statusFilter !== 'active') {
+            parts.push(`with ${statusFilter} status`);
+        }
+        
+        if (productFilter && this.productsCache && this.productsCache[productFilter]) {
+            parts.push(`for ${this.productsCache[productFilter].name}`);
+        }
+        
+        if (this.currentSearchTerm) {
+            parts.push(`matching "${this.currentSearchTerm}"`);
+        }
+        
+        if (parts.length > 0) {
+            description += ' ' + parts.join(' and ');
+        }
+        
+        return description;
     }
 
     // Render only the table content without filter controls (for filtering)
