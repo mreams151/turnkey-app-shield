@@ -20,6 +20,7 @@
     "db:backup:local": "wrangler d1 execute turnkey-app-shield-production --local --command=\".dump\" > database-backups/local-backup-$(date +%Y%m%d_%H%M%S).sql",
     "db:backup:prod": "wrangler d1 execute turnkey-app-shield-production --remote --command=\".dump\" > database-backups/production-backup-$(date +%Y%m%d_%H%M%S).sql",
     "db:backup:all": "mkdir -p database-backups && npm run db:backup:local && npm run db:backup:prod",
+    "backup:complete": "node backup-database.js",
     "test": "curl http://localhost:3000",
     "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
     "start:pm2": "pm2 start ecosystem.config.cjs"
