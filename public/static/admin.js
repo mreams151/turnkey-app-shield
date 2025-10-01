@@ -850,9 +850,9 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full status-badge-${customer.status?.toLowerCase() || 'unknown'}" 
-                                              data-status="${customer.status || 'unknown'}">
-                                            ${customer.status ? customer.status.toUpperCase() : 'UNKNOWN'}
+                                        <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
+                                            ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-sm">
@@ -907,7 +907,6 @@ class AdminPanel {
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
-                this.applyStatusBadgeColors();
             }, 100);
         } catch (error) {
             console.error('Error in renderCustomersTable template:', error);
@@ -1230,7 +1229,6 @@ class AdminPanel {
         
         // Re-setup event listeners after table re-render
         this.setupBulkSelectionListeners();
-        this.applyStatusBadgeColors();
         
         // Debug: Check if checkboxes exist after renderCustomersTableOnly
         setTimeout(() => {
@@ -1369,7 +1367,6 @@ class AdminPanel {
             // Re-setup checkbox event listeners after table update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
-                this.applyStatusBadgeColors();
             }, 100);
             
             // Restore search term after table rebuild
