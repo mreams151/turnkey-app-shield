@@ -1192,65 +1192,70 @@ class AdminPanel {
     // Render customer table rows safely to avoid template literal issues
     renderCustomerRows(customers) {
         try {
-            return customers.map(customer => {
-                const customerName = (customer.name || 'N/A').replace(/"/g, '&quot;');
-                const customerEmail = customer.email || 'N/A';
-                const licenseKey = customer.license_key || 'N/A';
-                const productName = customer.product_name || this.getProductName(customer.product_id);
-                const registrationDate = this.formatDateTime(customer.registration_date || customer.created_at);
-                const statusBadge = this.renderStatusBadge(customer.status);
-                
+            if (!customers || customers.length === 0) {
                 return `
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3">
-                            <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" 
-                                   data-customer-id="${customer.id}" data-customer-name="${customerName}">
-                        </td>
-                        <td class="px-4 py-3 text-sm text-gray-900">${customerName.replace(/&quot;/g, '"')}</td>
-                        <td class="px-4 py-3 text-sm">
-                            <a href="mailto:${customerEmail}" class="text-blue-600 hover:text-blue-800">
-                                ${customerEmail}
-                            </a>
-                        </td>
-                        <td class="px-4 py-3 text-sm text-gray-600">
-                            ${registrationDate}
-                        </td>
-                        <td class="px-4 py-3 text-sm text-gray-600">
-                            ${productName}
-                        </td>
-                        <td class="px-4 py-3 text-sm font-mono text-gray-600">
-                            ${licenseKey}
-                        </td>
-                        <td class="px-4 py-3 text-sm">
-                            ${statusBadge}
-                        </td>
-                        <td class="px-4 py-3 text-sm">
-                            <div class="flex gap-1">
-                                <button onclick="adminPanel.editCustomer(${customer.id})" 
-                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                    title="Edit Customer">
-                                    Edit
-                                </button>
-                                <button onclick="adminPanel.viewCustomerDetails(${customer.id})" 
-                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                    title="View Details">
-                                    Details
-                                </button>
-                                <button onclick="adminPanel.deleteCustomer(${customer.id})" 
-                                    class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700" 
-                                    title="Delete Customer">
-                                    Delete
-                                </button>
-                                <button onclick="adminPanel.resendLicenseEmail(${customer.id})" 
-                                    class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700" 
-                                    title="Email License Key">
-                                    <i class="fas fa-envelope"></i>
-                                </button>
-                            </div>
-                        </td>
+                    <tr>
+                        <td colspan="8" class="px-6 py-8 text-center text-gray-500">No customers found</td>
                     </tr>
                 `;
-            }).join('');
+            }
+
+            // Process in smaller chunks to prevent browser freeze
+            const chunkSize = 5;
+            let html = '';
+            
+            for (let i = 0; i < customers.length; i += chunkSize) {
+                const chunk = customers.slice(i, i + chunkSize);
+                
+                const chunkHtml = chunk.map(customer => {
+                    // Pre-process all variables to avoid complex template evaluation
+                    const id = customer.id || 0;
+                    const name = (customer.name || 'N/A').replace(/['"]/g, '');
+                    const email = customer.email || 'N/A';
+                    const licenseKey = customer.license_key || 'N/A';
+                    const productName = customer.product_name || 'Unknown Product';
+                    const status = customer.status || 'unknown';
+                    
+                    // Simple inline status badge (avoiding method call in template)
+                    let statusClass = 'bg-gray-100 text-gray-800';
+                    if (status === 'active') {
+                        statusClass = 'bg-green-100 text-green-800 border border-green-200';
+                    } else if (status === 'suspended') {
+                        statusClass = 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+                    } else if (status === 'revoked') {
+                        statusClass = 'bg-red-100 text-red-800 border border-red-200';
+                    }
+                    
+                    const statusBadge = `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${status.toUpperCase()}</span>`;
+                    
+                    return `<tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">
+                            <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" data-customer-id="${id}" data-customer-name="${name}">
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${name}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="mailto:${email}" class="text-blue-600 hover:text-blue-800">${email}</a>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            ${customer.registration_date || customer.created_at || 'N/A'}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${productName}</td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-600">${licenseKey}</td>
+                        <td class="px-4 py-3 text-sm">${statusBadge}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <div class="flex gap-1">
+                                <button onclick="adminPanel.editCustomer(${id})" class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">Edit</button>
+                                <button onclick="adminPanel.viewCustomerDetails(${id})" class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">Details</button>
+                                <button onclick="adminPanel.deleteCustomer(${id})" class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Delete</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+                
+                html += chunkHtml;
+            }
+            
+            return html;
         } catch (error) {
             console.error('Error rendering customer rows:', error);
             return `
