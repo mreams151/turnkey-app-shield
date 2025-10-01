@@ -1687,22 +1687,39 @@ class AdminPanel {
         try {
             this.showNotification('Preparing CSV export...', 'info');
             
-            // Use the working direct export endpoint
-            const downloadUrl = `${this.apiBaseUrl}/admin/export-direct/customers`;
+            // Use fetch with authorization headers to download the CSV
+            const response = await fetch(`${this.apiBaseUrl}/admin/export-direct/customers`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Accept': 'text/csv'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.status}`);
+            }
+
+            // Get the CSV content as a blob
+            const blob = await response.blob();
             
-            // Create a hidden link and click it to download
+            // Create download link with blob URL
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = downloadUrl;
+            link.href = url;
             link.download = `customers_export_${new Date().toISOString().split('T')[0]}.csv`;
             link.style.display = 'none';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             
-            this.showNotification('Customer export download started', 'success');
+            // Clean up the blob URL
+            window.URL.revokeObjectURL(url);
+            
+            this.showNotification('Customer export downloaded successfully', 'success');
         } catch (error) {
             console.error('Export error:', error);
-            this.showError('Failed to export customers');
+            this.showError('Failed to export customers: ' + error.message);
         }
     }
 
@@ -4397,21 +4414,39 @@ class AdminPanel {
                 url += `?severity=${severity}`;
             }
 
+            // Use fetch with authorization headers to download the CSV
+            const response = await fetch(`${this.apiBaseUrl}${url}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Accept': 'text/csv'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.status}`);
+            }
+
+            // Get the CSV content as a blob
+            const blob = await response.blob();
             
-            this.showNotification('Export ready! Download will start shortly...', 'success');
-            
-            // Create a hidden link and click it to download
+            // Create download link with blob URL
+            const blobUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = `${this.apiBaseUrl}${url}`;
+            link.href = blobUrl;
             link.download = 'security_events_export.csv';
             link.style.display = 'none';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             
+            // Clean up the blob URL
+            window.URL.revokeObjectURL(blobUrl);
+            
+            this.showNotification('Security events export downloaded successfully', 'success');
         } catch (error) {
             console.error('Export failed:', error);
-            this.showNotification('Export failed', 'error');
+            this.showNotification('Export failed: ' + error.message, 'error');
         }
     }
 

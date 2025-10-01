@@ -308,6 +308,53 @@ admin.get('/debug/headers', async (c) => {
   });
 });
 
+// Debug route to check database tables
+admin.get('/debug/tables', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all tables
+    const tables = await db.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_cf_%'
+    `).all();
+    
+    // Check if security_events table exists and get its structure
+    let securityEventsStructure = null;
+    try {
+      const structure = await db.db.prepare(`
+        PRAGMA table_info(security_events)
+      `).all();
+      securityEventsStructure = structure.results || [];
+    } catch (e) {
+      securityEventsStructure = `Error: ${e.message}`;
+    }
+    
+    // Try to count security events
+    let securityEventsCount = 0;
+    try {
+      const count = await db.db.prepare(`
+        SELECT COUNT(*) as count FROM security_events
+      `).first();
+      securityEventsCount = count?.count || 0;
+    } catch (e) {
+      securityEventsCount = `Error: ${e.message}`;
+    }
+    
+    return c.json({
+      tables: tables.results || [],
+      security_events_structure: securityEventsStructure,
+      security_events_count: securityEventsCount,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    return c.json({
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
+});
+
 // Test export endpoint that requires authentication  
 admin.post('/debug/test-export', authMiddleware, async (c) => {
   const adminUser = c.get('admin_user');
@@ -1746,10 +1793,9 @@ admin.get('/security/events', authMiddleware, async (c) => {
       SELECT se.*,
              c.email as customer_email,
              c.name as customer_name,
-             l.license_key
+             c.license_key
       FROM security_events se
       LEFT JOIN customers c ON se.customer_id = c.id
-      LEFT JOIN licenses l ON se.customer_id = l.customer_id
       WHERE 1=1
     `;
     
