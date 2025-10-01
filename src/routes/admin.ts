@@ -2578,8 +2578,51 @@ admin.get('/export-direct/:entity', authMiddleware, async (c) => {
     
     console.log('Direct export request:', { entity, severity });
     
+    if (entity === 'customers') {
+      // Handle customer export
+      const db = new DatabaseManager(c.env.DB);
+      
+      const query = `
+        SELECT c.id, c.name, c.email, c.status, c.license_key, c.license_type,
+               c.registration_date, c.expires_at, c.notes,
+               p.name as product_name, p.version as product_version
+        FROM customers c
+        LEFT JOIN products p ON c.product_id = p.id
+        ORDER BY c.registration_date DESC
+      `;
+      
+      const result = await db.db.prepare(query).all();
+      const customers = result.results || [];
+      
+      if (customers.length === 0) {
+        return c.text('id,name,email,status,license_key,license_type,product_name,registration_date,expires_at,notes\n', 200, {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': 'attachment; filename="customers_empty.csv"'
+        });
+      }
+
+      // Create CSV
+      const headers = ['id', 'name', 'email', 'status', 'license_key', 'license_type', 'product_name', 'product_version', 'registration_date', 'expires_at', 'notes'];
+      let csv = headers.join(',') + '\n';
+      
+      for (const customer of customers) {
+        const values = headers.map(header => {
+          const value = customer[header] || '';
+          return typeof value === 'string' && value.includes(',') ? `"${value.replace(/"/g, '""')}"` : value;
+        });
+        csv += values.join(',') + '\n';
+      }
+
+      const filename = `customers_export_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      return c.text(csv, 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="${filename}"`
+      });
+    }
+    
     if (entity !== 'security_events') {
-      return c.json({ success: false, message: 'Only security_events supported' }, 400);
+      return c.json({ success: false, message: 'Only security_events and customers supported' }, 400);
     }
 
     const db = new DatabaseManager(c.env.DB);
@@ -4397,6 +4440,75 @@ admin.get('/licenses/:licenseKey/details', authMiddleware, async (c) => {
     return c.json({ 
       success: false,
       message: 'Failed to fetch license details' 
+    }, 500);
+  }
+});
+
+// Customer export endpoint that matches frontend expectations
+admin.get('/export/customers', authMiddleware, async (c) => {
+  try {
+    return c.json({
+      success: true,
+      message: 'Export ready for download'
+    });
+  } catch (error) {
+    console.error('Customer export error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to prepare customer export'
+    }, 500);
+  }
+});
+
+// Customer export download endpoint
+admin.get('/export/customers/download', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all customers with product information
+    const query = `
+      SELECT c.id, c.name, c.email, c.status, c.license_key, c.license_type,
+             c.registration_date, c.expires_at, c.notes,
+             p.name as product_name, p.version as product_version
+      FROM customers c
+      LEFT JOIN products p ON c.product_id = p.id
+      ORDER BY c.registration_date DESC
+    `;
+    
+    const result = await db.db.prepare(query).all();
+    const customers = result.results || [];
+    
+    if (customers.length === 0) {
+      return c.text('id,name,email,status,license_key,license_type,product_name,registration_date,expires_at,notes\n', 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="customers_empty.csv"'
+      });
+    }
+
+    // Create CSV
+    const headers = ['id', 'name', 'email', 'status', 'license_key', 'license_type', 'product_name', 'product_version', 'registration_date', 'expires_at', 'notes'];
+    let csv = headers.join(',') + '\n';
+    
+    for (const customer of customers) {
+      const values = headers.map(header => {
+        const value = customer[header] || '';
+        return typeof value === 'string' && value.includes(',') ? `"${value.replace(/"/g, '""')}"` : value;
+      });
+      csv += values.join(',') + '\n';
+    }
+
+    const filename = `customers_export_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    return c.text(csv, 200, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="${filename}"`
+    });
+
+  } catch (error) {
+    console.error('Customer export download error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to download customer export'
     }, 500);
   }
 });

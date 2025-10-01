@@ -5,6 +5,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "pages_build_output_dir": "./dist",
   
+
+  
   // D1 Database Configuration for Software Protection System
   "d1_databases": [
     {
@@ -34,7 +36,7 @@
   
   // Environment Variables
   "vars": {
-    "ENVIRONMENT": "development",
+    "ENVIRONMENT": "production",
     "API_VERSION": "v2",
     "MAX_ACTIVATIONS_PER_MINUTE": "100",
     "SYSTEM_NAME": "TurnkeyAppShield",

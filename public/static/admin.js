@@ -1685,20 +1685,24 @@ class AdminPanel {
     // Export customers to Excel
     async exportToExcel() {
         try {
-            this.showNotification('Preparing Excel export...', 'info');
+            this.showNotification('Preparing CSV export...', 'info');
             
-            const response = await this.apiCall('/admin/export/customers');
-            if (response.success) {
-                // Create download link
-                const downloadUrl = `${this.apiBaseUrl}/admin/export/customers/download?token=${this.token}`;
-                window.open(downloadUrl, '_blank');
-                this.showNotification('Excel export started', 'success');
-            } else {
-                this.showError('Failed to export data');
-            }
+            // Use the working direct export endpoint
+            const downloadUrl = `${this.apiBaseUrl}/admin/export-direct/customers`;
+            
+            // Create a hidden link and click it to download
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `customers_export_${new Date().toISOString().split('T')[0]}.csv`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.showNotification('Customer export download started', 'success');
         } catch (error) {
             console.error('Export error:', error);
-            this.showError('Failed to export data to Excel');
+            this.showError('Failed to export customers');
         }
     }
 
