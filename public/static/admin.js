@@ -830,56 +830,7 @@ class AdminPanel {
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                            ${customers.length > 0 ? customers.map(customer => `
-                                <tr class="hover:bg-gray-50">
-                                    <td class="px-4 py-3">
-                                        <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" 
-                                               data-customer-id="${customer.id}" data-customer-name="${(customer.name || '').replace(/"/g, '&quot;')}">
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-900">${customer.name || 'N/A'}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <a href="mailto:${customer.email}" class="text-blue-600 hover:text-blue-800">
-                                            ${customer.email}
-                                        </a>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">
-                                        ${this.formatDateTime(customer.registration_date || customer.created_at)}
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">
-                                        ${customer.product_name || this.getProductName(customer.product_id)}
-                                    </td>
-                                    <td class="px-4 py-3 text-sm font-mono text-gray-600">
-                                        ${customer.license_key || 'N/A'}
-                                    </td>
-                                    <td class="px-4 py-3 text-sm">
-                                        ${this.renderStatusBadge(customer.status)}
-                                    </td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <div class="flex gap-1">
-                                            <button onclick="adminPanel.editCustomer(${customer.id})" 
-                                                class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                                title="Edit Customer">
-                                                Edit
-                                            </button>
-                                            <button onclick="adminPanel.viewCustomerDetails(${customer.id})" 
-                                                class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                                title="View Details">
-                                                Details
-                                            </button>
-                                            <button onclick="adminPanel.deleteCustomer(${customer.id})" 
-                                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
-                                                title="Delete Customer">
-                                                Delete
-                                            </button>
-                                            <button onclick="adminPanel.resendLicenseEmail(${customer.id})" 
-                                                class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700" 
-                                                title="Email License Key">
-                                                <i class="fas fa-envelope"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `).join('') : `
+                            ${customers.length > 0 ? this.renderCustomerRows(customers) : `
                                 <tr>
                                     <td colspan="8" class="px-6 py-8 text-center text-gray-500">No customers found</td>
                                 </tr>
@@ -1238,6 +1189,79 @@ class AdminPanel {
     }
 
 
+    // Render customer table rows safely to avoid template literal issues
+    renderCustomerRows(customers) {
+        try {
+            return customers.map(customer => {
+                const customerName = (customer.name || 'N/A').replace(/"/g, '&quot;');
+                const customerEmail = customer.email || 'N/A';
+                const licenseKey = customer.license_key || 'N/A';
+                const productName = customer.product_name || this.getProductName(customer.product_id);
+                const registrationDate = this.formatDateTime(customer.registration_date || customer.created_at);
+                const statusBadge = this.renderStatusBadge(customer.status);
+                
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">
+                            <input type="checkbox" class="customer-checkbox rounded border-gray-300 text-brand-blue focus:ring-brand-blue" 
+                                   data-customer-id="${customer.id}" data-customer-name="${customerName}">
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${customerName.replace(/&quot;/g, '"')}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="mailto:${customerEmail}" class="text-blue-600 hover:text-blue-800">
+                                ${customerEmail}
+                            </a>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            ${registrationDate}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            ${productName}
+                        </td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-600">
+                            ${licenseKey}
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            ${statusBadge}
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <div class="flex gap-1">
+                                <button onclick="adminPanel.editCustomer(${customer.id})" 
+                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
+                                    title="Edit Customer">
+                                    Edit
+                                </button>
+                                <button onclick="adminPanel.viewCustomerDetails(${customer.id})" 
+                                    class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700" 
+                                    title="View Details">
+                                    Details
+                                </button>
+                                <button onclick="adminPanel.deleteCustomer(${customer.id})" 
+                                    class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700" 
+                                    title="Delete Customer">
+                                    Delete
+                                </button>
+                                <button onclick="adminPanel.resendLicenseEmail(${customer.id})" 
+                                    class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700" 
+                                    title="Email License Key">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error rendering customer rows:', error);
+            return `
+                <tr>
+                    <td colspan="8" class="px-6 py-8 text-center text-red-600">
+                        Error rendering customer data: ${error.message}
+                    </td>
+                </tr>
+            `;
+        }
+    }
 
     // Render only the table content without filter controls (for filtering)
     // Apply status badge colors after rendering
