@@ -72,26 +72,19 @@ class AdminPanel {
                         <p class="mt-2 text-center text-sm text-gray-600">
                             TurnkeyAppShield Administration
                         </p>
-                        <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                            <p class="text-center text-sm text-blue-800">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                <strong>Default Credentials:</strong><br>
-                                Username: <code class="bg-white px-1 rounded">admin</code><br>
-                                Password: <code class="bg-white px-1 rounded">admin123</code>
-                            </p>
-                        </div>
+
                     </div>
                     <form class="mt-8 space-y-6" id="login-form">
                         <div class="rounded-md shadow-sm -space-y-px">
                             <div>
                                 <input id="username" name="username" type="text" required
                                     class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
-                                    placeholder="Username: admin" value="admin">
+                                    placeholder="Username">
                             </div>
                             <div>
                                 <input id="password" name="password" type="password" required
                                     class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
-                                    placeholder="Password: admin123">
+                                    placeholder="Password">
                             </div>
                         </div>
 
@@ -340,15 +333,20 @@ class AdminPanel {
     }
 
     async showPage(page) {
+        console.log('DEBUG: showPage called with:', page);
         this.currentPage = page;
+        console.log('DEBUG: About to update nav item');
         this.updateActiveNavItem(page);
+        console.log('DEBUG: Nav item updated, switching to page');
         
         switch(page) {
             case 'dashboard':
                 this.loadDashboard();
                 break;
             case 'customers':
+                console.log('DEBUG: About to call showCustomers()');
                 this.showCustomers();
+                console.log('DEBUG: showCustomers() returned');
                 break;
             case 'products':
                 this.showProducts();
@@ -571,39 +569,120 @@ class AdminPanel {
     }
 
     async showCustomers() {
-        const content = document.getElementById('main-content');
-        content.innerHTML = `
-            <div class="mb-8">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">Customers</h1>
-                    <p class="text-gray-600 mt-2">Manage customer accounts and information</p>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div class="p-6" id="customers-content">
-                    <div class="flex items-center justify-center py-8">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-blue"></div>
+        console.log('DEBUG: showCustomers() - LOADING REAL CUSTOMER DATA');
+        
+        try {
+            const content = document.getElementById('main-content');
+            if (!content) {
+                console.error('DEBUG: main-content not found!');
+                return;
+            }
+            
+            // Create the proper DOM structure that renderCustomersTable expects
+            content.innerHTML = `
+                <div class="p-8">
+                    <h2 class="text-xl font-semibold mb-4">Customers</h2>
+                    <div id="customers-content">
+                        <div class="text-center py-8">
+                            <div class="animate-pulse">
+                                <div class="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                <p class="mt-4 text-gray-600">Loading customers...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
+            
+            console.log('DEBUG: Making API call for customers...');
+            // Load customers with a simple API call
+            const response = await this.apiCall('/admin/customers?limit=50');
+            
+            if (response.success) {
+                console.log('DEBUG: Received customer data:', response.customers?.length || 0, 'customers');
+                
+                this.renderCustomersTable(response.customers || []);
+                
+                // Load products for the filter dropdown AND apply default active filter AFTER DOM is rendered
+                setTimeout(async () => {
+                    await this.loadProductsForFilter();
+                    
+                    // Apply default active filter after everything is loaded
+                    this.filterCustomers();
+                }, 100);
+            } else {
+                console.log('DEBUG: API call failed:', response.message);
+                const customersContent = document.getElementById('customers-content');
+                if (customersContent) {
+                    customersContent.innerHTML = `
+                        <div class="text-center py-8">
+                            <h3 class="text-lg font-semibold text-red-600 mb-2">Failed to load customers</h3>
+                            <p class="text-gray-600">${response.message || 'Unknown error'}</p>
+                        </div>
+                    `;
+                }
+            }
+            
+        } catch (error) {
+            console.error('DEBUG: Error in showCustomers:', error);
+            const customersContent = document.getElementById('customers-content');
+            if (customersContent) {
+                customersContent.innerHTML = `
+                    <div class="text-center py-8">
+                        <h3 class="text-lg font-semibold text-red-600 mb-2">Error loading customers</h3>
+                        <p class="text-gray-600">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+    }
 
-        // Load both customers and products for the filter dropdown
-        await Promise.all([
-            this.loadCustomers(),
-            this.loadProductsForFilter()
-        ]);
+    // Test method to load actual customers
+    async testLoadActualCustomers() {
+        console.log('DEBUG: testLoadActualCustomers() called');
+        const content = document.getElementById('main-content');
+        
+        try {
+            console.log('DEBUG: Making test API call');
+            const response = await this.apiCall('/admin/customers?status=active&limit=2');
+            console.log('DEBUG: Test API response:', response);
+            
+            if (response.success) {
+                content.innerHTML = `
+                    <div class="mb-8">
+                        <h1 class="text-3xl font-bold text-gray-900">Customers - API TEST</h1>
+                        <p class="text-gray-600 mt-2">Found ${response.customers.length} customers</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                        <pre>${JSON.stringify(response.customers, null, 2)}</pre>
+                    </div>
+                `;
+                console.log('DEBUG: Test customers displayed successfully');
+            } else {
+                throw new Error('API call failed');
+            }
+        } catch (error) {
+            console.error('DEBUG: Error in testLoadActualCustomers:', error);
+            content.innerHTML = `
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <p class="text-red-600">❌ Error: ${error.message}</p>
+                </div>
+            `;
+        }
     }
 
     async loadCustomers() {
+        console.log('DEBUG: loadCustomers() started');
         try {
-            
+            console.log('DEBUG: Making API call to /admin/customers?status=active');
             const response = await this.apiCall('/admin/customers?status=active');
+            console.log('DEBUG: API response received:', response ? 'success' : 'failed');
             
             const customers = response.success ? response.customers : [];
+            console.log('DEBUG: Customers extracted:', customers ? customers.length : 0);
             
+            console.log('DEBUG: About to render customers table');
             this.renderCustomersTable(customers);
+            console.log('DEBUG: Customers table rendered');
         } catch (error) {
             console.error('Failed to load customers:', error);
             console.error('Error details:', error.response?.data);
@@ -620,14 +699,20 @@ class AdminPanel {
 
     async loadProductsForFilter() {
         try {
+            console.log('DEBUG: Loading products for filter...');
             const response = await this.apiCall('/admin/products?status=all');
+            console.log('DEBUG: Products API response:', response);
+            
             if (response.success && response.products) {
+                console.log('DEBUG: Found', response.products.length, 'products');
+                
                 // Cache products for getProductName function and separate by status
                 this.productsCache = {};
                 this.activeProducts = [];
                 this.inactiveProducts = [];
                 
                 response.products.forEach(product => {
+                    console.log('DEBUG: Processing product:', product.name, 'status:', product.status);
                     this.productsCache[product.id] = product;
                     if (product.status === 'active') {
                         this.activeProducts.push(product);
@@ -636,12 +721,20 @@ class AdminPanel {
                     }
                 });
 
+                console.log('DEBUG: Active products:', this.activeProducts.length);
+                console.log('DEBUG: Inactive products:', this.inactiveProducts.length);
+
                 // Initialize with "All Products" tab selected
                 this.currentProductFilterTab = 'all';
                 this.updateProductFilterDropdown();
+                
+                console.log('DEBUG: Product filter dropdown updated');
+            } else {
+                console.log('DEBUG: No products found or API call failed');
             }
         } catch (error) {
             console.error('Failed to load products for filter:', error);
+            console.error('Error details:', error.response?.data);
         }
     }
 
@@ -663,11 +756,19 @@ class AdminPanel {
     }
 
     updateProductFilterDropdown() {
+        console.log('DEBUG: updateProductFilterDropdown called');
         const productFilter = document.getElementById('product-filter');
-        if (!productFilter) return;
+        if (!productFilter) {
+            console.log('DEBUG: product-filter element not found!');
+            return;
+        }
 
         let products = [];
         let emptyText = 'Select a product...';
+
+        console.log('DEBUG: currentProductFilterTab:', this.currentProductFilterTab);
+        console.log('DEBUG: activeProducts available:', this.activeProducts?.length || 0);
+        console.log('DEBUG: inactiveProducts available:', this.inactiveProducts?.length || 0);
 
         switch (this.currentProductFilterTab) {
             case 'active':
@@ -684,6 +785,8 @@ class AdminPanel {
                 emptyText = 'Select a product...';
                 break;
         }
+
+        console.log('DEBUG: Selected products for dropdown:', products.length);
 
         // Sort products by name for better usability
         products.sort((a, b) => a.name.localeCompare(b.name));
@@ -1338,8 +1441,8 @@ class AdminPanel {
                             ${customer.license_key || 'N/A'}
                         </td>
                         <td class="px-4 py-3 text-sm">
-                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                ${customer.status || 'N/A'}
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800 border border-green-200' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' : customer.status === 'revoked' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-gray-100 text-gray-800'}">
+                                ${(customer.status || 'N/A').toUpperCase()}
                             </span>
                         </td>
                         <td class="px-4 py-3 text-sm">
