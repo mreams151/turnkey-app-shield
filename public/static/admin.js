@@ -851,7 +851,8 @@ class AdminPanel {
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" 
+                                              style="${customer.status === 'active' ? 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;' : customer.status === 'suspended' ? 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;' : 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;'}">
                                             ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
                                         </span>
                                     </td>
@@ -1483,7 +1484,8 @@ class AdminPanel {
                         <label class="block text-sm font-medium text-gray-700 mb-1">Customer Status</label>
                         <div class="text-sm">
                             <!-- Status Badge: Green=Active, Yellow=Suspended, Red=Invalid/Unrecognized -->
-                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" 
+                                  style="${customer.status === 'active' ? 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;' : customer.status === 'suspended' ? 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;' : 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;'}">
                                 ${customer.status === 'active' ? 'ACTIVE' : customer.status.toUpperCase()}
                             </span>
                         </div>
