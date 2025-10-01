@@ -10,10 +10,6 @@ class AdminPanel {
         this.currentPage = 'dashboard';
         this.dashboardRendered = false; // Fix for infinite scroll issue
         this.uploads = []; // Initialize uploads array
-        this.badgeObservers = []; // Track observers for cleanup
-        
-        // Initialize force status badge system IMMEDIATELY
-        this.initializeForceStatusBadges();
         
         this.init();
     }
@@ -856,7 +852,7 @@ class AdminPanel {
                                         ${customer.license_key || 'N/A'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        ${this.generateStatusBadgeHtml(customer.status)}
+                                        ${this.renderStatusBadge(customer.status)}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         <div class="flex gap-1">
@@ -910,8 +906,6 @@ class AdminPanel {
             // Add event listeners for bulk selection checkboxes after DOM update
             setTimeout(() => {
                 this.setupBulkSelectionListeners();
-                // Force apply badge colors continuously after table render
-                this.startContinuousColorForcement();
             }, 100);
         } catch (error) {
             console.error('Error in renderCustomersTable template:', error);
@@ -1243,218 +1237,7 @@ class AdminPanel {
         return description;
     }
 
-    // Continuously scan and force correct badge colors
-    startContinuousColorForcement() {
-        // Clear any existing interval
-        if (this.colorForcementInterval) {
-            clearInterval(this.colorForcementInterval);
-        }
-        
-        // Function to force all badge colors
-        const forceAllBadgeColors = () => {
-            const badges = document.querySelectorAll('.force-status-badge');
-            badges.forEach(badge => {
-                const status = badge.getAttribute('data-status');
-                if (status && badge.id) {
-                    this.enforceStatusBadgeColor(badge.id, status);
-                }
-            });
-        };
-        
-        // Force colors immediately
-        forceAllBadgeColors();
-        
-        // Force colors every 100ms for the first 5 seconds after table render
-        let iterations = 0;
-        this.colorForcementInterval = setInterval(() => {
-            forceAllBadgeColors();
-            iterations++;
-            
-            // After 50 iterations (5 seconds), reduce frequency to every 1 second
-            if (iterations >= 50) {
-                clearInterval(this.colorForcementInterval);
-                this.colorForcementInterval = setInterval(forceAllBadgeColors, 1000);
-            }
-        }, 100);
-        
-        // Stop forcing after 30 seconds total
-        setTimeout(() => {
-            if (this.colorForcementInterval) {
-                clearInterval(this.colorForcementInterval);
-            }
-        }, 30000);
-    }
 
-    // FINAL NUCLEAR SOLUTION: Use unique ID badges with MutationObserver
-    generateStatusBadgeHtml(status) {
-        const statusText = (status || 'unknown').toUpperCase();
-        const uniqueId = `status-badge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        // Create badge HTML with unique ID
-        const badgeHtml = `<span id="${uniqueId}" class="force-status-badge" data-status="${status}" style="display: inline-block !important;">${statusText}</span>`;
-        
-        // Schedule immediate style enforcement
-        setTimeout(() => {
-            this.enforceStatusBadgeColor(uniqueId, status);
-        }, 1);
-        
-        return badgeHtml;
-    }
-
-    // Enforce badge color with maximum aggression
-    enforceStatusBadgeColor(elementId, status) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        let backgroundColor, color, borderColor;
-        
-        switch(status) {
-            case 'active':
-                backgroundColor = '#dcfce7';
-                color = '#166534';
-                borderColor = '#bbf7d0';
-                break;
-            case 'suspended':
-                backgroundColor = '#fef3c7';
-                color = '#92400e'; 
-                borderColor = '#fde68a';
-                break;
-            case 'revoked':
-                backgroundColor = '#fee2e2';
-                color = '#991b1b';
-                borderColor = '#fecaca';
-                break;
-            default:
-                backgroundColor = '#f3f4f6';
-                color = '#374151';
-                borderColor = '#d1d5db';
-                break;
-        }
-        
-        // Apply styles with maximum force
-        const applyStyles = () => {
-            if (element && element.parentNode) {
-                element.style.cssText = `
-                    display: inline-block !important;
-                    padding: 4px 8px !important;
-                    font-size: 11px !important;
-                    font-weight: bold !important;
-                    text-align: center !important;
-                    border-radius: 12px !important;
-                    background-color: ${backgroundColor} !important;
-                    background: ${backgroundColor} !important;
-                    color: ${color} !important;
-                    border: 1px solid ${borderColor} !important;
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1) !important;
-                    text-shadow: none !important;
-                    letter-spacing: 0.5px !important;
-                    width: fit-content !important;
-                    margin: 0 !important;
-                `;
-                
-                // Override any class-based styles
-                element.className = 'force-status-badge';
-                element.setAttribute('data-status', status);
-            }
-        };
-        
-        // Apply immediately
-        applyStyles();
-        
-        // Apply again in 10ms, 50ms, 100ms, 250ms, 500ms to catch any overrides
-        [10, 50, 100, 250, 500].forEach(delay => {
-            setTimeout(applyStyles, delay);
-        });
-        
-        // Set up MutationObserver to continuously enforce styles
-        const observer = new MutationObserver(() => {
-            applyStyles();
-        });
-        
-        if (element.parentNode) {
-            observer.observe(element, { 
-                attributes: true, 
-                attributeOldValue: true,
-                attributeFilter: ['style', 'class']
-            });
-            
-            // Also observe parent for any changes
-            observer.observe(element.parentNode, {
-                childList: true,
-                subtree: true
-            });
-        }
-        
-        // Store observer for cleanup if needed
-        if (!this.badgeObservers) this.badgeObservers = [];
-        this.badgeObservers.push(observer);
-    }
-
-    // Initialize global style enforcement
-    initializeForceStatusBadges() {
-        // Inject aggressive CSS that overrides everything
-        const forceStyle = document.createElement('style');
-        forceStyle.id = 'force-status-badge-styles';
-        forceStyle.innerHTML = `
-            .force-status-badge[data-status="active"] {
-                background-color: #dcfce7 !important;
-                background: #dcfce7 !important;
-                color: #166534 !important;
-                border: 1px solid #bbf7d0 !important;
-            }
-            .force-status-badge[data-status="suspended"] {
-                background-color: #fef3c7 !important;
-                background: #fef3c7 !important;
-                color: #92400e !important;
-                border: 1px solid #fde68a !important;
-            }
-            .force-status-badge[data-status="revoked"] {
-                background-color: #fee2e2 !important;
-                background: #fee2e2 !important;
-                color: #991b1b !important;
-                border: 1px solid #fecaca !important;
-            }
-            .force-status-badge {
-                display: inline-block !important;
-                padding: 4px 8px !important;
-                font-size: 11px !important;
-                font-weight: bold !important;
-                text-align: center !important;
-                border-radius: 12px !important;
-                box-shadow: inset 0 1px 0 rgba(255,255,255,0.1) !important;
-                text-shadow: none !important;
-                letter-spacing: 0.5px !important;
-                width: fit-content !important;
-                margin: 0 !important;
-            }
-        `;
-        document.head.appendChild(forceStyle);
-        
-        // Global mutation observer to catch any status badges
-        const globalObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'childList') {
-                    mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1) { // Element node
-                            // Find any force-status-badge elements
-                            const badges = node.querySelectorAll ? node.querySelectorAll('.force-status-badge') : [];
-                            badges.forEach(badge => {
-                                const status = badge.getAttribute('data-status');
-                                if (status) {
-                                    this.enforceStatusBadgeColor(badge.id, status);
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-        });
-        
-        globalObserver.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }
 
     // Render only the table content without filter controls (for filtering)
     // Apply status badge colors after rendering
