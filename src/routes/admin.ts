@@ -4559,6 +4559,606 @@ admin.get('/export/customers/download', authMiddleware, async (c) => {
   }
 });
 
+/**
+ * 2FA (Two-Factor Authentication) Management
+ */
+
+// Import 2FA libraries
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
+
+// Configure TOTP settings
+authenticator.options = {
+  window: 2, // Allow 2 time windows (30 seconds each) for clock drift
+  step: 30,  // 30-second time step
+  digits: 6  // 6-digit codes
+};
+
+// Setup 2FA - Generate QR code and secret
+admin.post('/2fa/setup', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if 2FA is already enabled
+    const currentUser = await db.db.prepare(`
+      SELECT two_fa_enabled, totp_secret FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    if (currentUser?.two_fa_enabled) {
+      return c.json({
+        success: false,
+        message: '2FA is already enabled for this account'
+      }, 400);
+    }
+    
+    // Generate new TOTP secret
+    const secret = authenticator.generateSecret();
+    const issuer = 'TurnkeyAppShield';
+    const label = `${issuer}:${adminUser.username}`;
+    
+    // Create the authenticator URI
+    const otpauthUrl = authenticator.keyuri(adminUser.username, issuer, secret);
+    
+    // Generate QR code using string method (Cloudflare Workers compatible)
+    let qrCodeDataUrl;
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl, {
+        errorCorrectionLevel: 'M',
+        type: 'image/png',
+        quality: 0.92,
+        margin: 1,
+        color: {
+          dark:'#000000FF',
+          light:'#FFFFFFFF'
+        }
+      });
+    } catch (error) {
+      console.error('QR Code generation failed, using fallback URL:', error);
+      // Fallback: Use a QR code service API
+      const encodedUrl = encodeURIComponent(otpauthUrl);
+      qrCodeDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodedUrl}`;
+    }
+    
+    // Save the secret temporarily (not enabled yet until verification)
+    await db.db.prepare(`
+      UPDATE admin_users SET totp_secret = ? WHERE id = ?
+    `).bind(secret, adminUser.id).run();
+    
+    return c.json({
+      success: true,
+      qr_code: qrCodeDataUrl,
+      secret: secret, // Show secret as backup method
+      backup_codes: [], // We'll generate these after verification
+      message: 'Scan the QR code with your authenticator app'
+    });
+    
+  } catch (error) {
+    console.error('2FA setup error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to setup 2FA'
+    }, 500);
+  }
+});
+
+// Verify and enable 2FA
+admin.post('/2fa/verify-setup', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const { code } = await c.req.json();
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (!code || code.length !== 6) {
+      return c.json({
+        success: false,
+        message: 'Invalid verification code'
+      }, 400);
+    }
+    
+    // Get the user's TOTP secret
+    const user = await db.db.prepare(`
+      SELECT totp_secret, two_fa_enabled FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    if (!user?.totp_secret) {
+      return c.json({
+        success: false,
+        message: 'No 2FA setup found. Please start setup process first.'
+      }, 400);
+    }
+    
+    if (user.two_fa_enabled) {
+      return c.json({
+        success: false,
+        message: '2FA is already enabled'
+      }, 400);
+    }
+    
+    // Verify the code
+    const isValid = authenticator.verify({
+      token: code,
+      secret: user.totp_secret
+    });
+    
+    if (!isValid) {
+      return c.json({
+        success: false,
+        message: 'Invalid verification code. Please try again.'
+      }, 400);
+    }
+    
+    // Generate backup codes (8 codes of 8 characters each)
+    const backupCodes = Array.from({ length: 8 }, () => 
+      Math.random().toString(36).substring(2, 10).toUpperCase()
+    );
+    
+    // Hash backup codes for storage (using Web Crypto API)
+    const encoder = new TextEncoder();
+    const hashedCodes = await Promise.all(
+      backupCodes.map(async (code) => {
+        const data = encoder.encode(code);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      })
+    );
+    
+    // Enable 2FA and save backup codes
+    await db.db.prepare(`
+      UPDATE admin_users 
+      SET two_fa_enabled = TRUE, backup_codes = ? 
+      WHERE id = ?
+    `).bind(JSON.stringify(hashedCodes), adminUser.id).run();
+    
+    // Log the action
+    console.log(`2FA enabled for admin user: ${adminUser.username}`);
+    
+    return c.json({
+      success: true,
+      backup_codes: backupCodes, // Show unhashed codes to user (only time they'll see them)
+      message: '2FA enabled successfully! Save your backup codes in a secure place.'
+    });
+    
+  } catch (error) {
+    console.error('2FA verification error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to verify 2FA setup'
+    }, 500);
+  }
+});
+
+// Disable 2FA
+admin.post('/2fa/disable', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const { password, code } = await c.req.json();
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (!password) {
+      return c.json({
+        success: false,
+        message: 'Password required to disable 2FA'
+      }, 400);
+    }
+    
+    // Verify password
+    const user = await db.db.prepare(`
+      SELECT password_hash, totp_secret, two_fa_enabled FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    if (!user) {
+      return c.json({
+        success: false,
+        message: 'User not found'
+      }, 400);
+    }
+    
+    const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
+    if (!passwordValid) {
+      return c.json({
+        success: false,
+        message: 'Invalid password'
+      }, 400);
+    }
+    
+    // If 2FA is enabled, require a valid code
+    if (user.two_fa_enabled) {
+      if (!code) {
+        return c.json({
+          success: false,
+          message: '2FA code required to disable 2FA'
+        }, 400);
+      }
+      
+      const isValid = authenticator.verify({
+        token: code,
+        secret: user.totp_secret
+      });
+      
+      if (!isValid) {
+        return c.json({
+          success: false,
+          message: 'Invalid 2FA code'
+        }, 400);
+      }
+    }
+    
+    // Disable 2FA
+    await db.db.prepare(`
+      UPDATE admin_users 
+      SET two_fa_enabled = FALSE, totp_secret = NULL, backup_codes = NULL 
+      WHERE id = ?
+    `).bind(adminUser.id).run();
+    
+    // Log the action
+    console.log(`2FA disabled for admin user: ${adminUser.username}`);
+    
+    return c.json({
+      success: true,
+      message: '2FA disabled successfully'
+    });
+    
+  } catch (error) {
+    console.error('2FA disable error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to disable 2FA'
+    }, 500);
+  }
+});
+
+// Get 2FA status
+admin.get('/2fa/status', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    const user = await db.db.prepare(`
+      SELECT two_fa_enabled FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    return c.json({
+      success: true,
+      two_fa_enabled: !!user?.two_fa_enabled
+    });
+    
+  } catch (error) {
+    console.error('2FA status error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to get 2FA status'
+    }, 500);
+  }
+});
+
+/**
+ * Enhanced Login with 2FA Support
+ */
+admin.post('/login-2fa', async (c) => {
+  try {
+    const { username, password, totp_code, backup_code } = await c.req.json();
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (!username || !password) {
+      return c.json({
+        success: false,
+        message: 'Username and password are required'
+      }, 400);
+    }
+    
+    // Get user with 2FA info
+    const user = await db.db.prepare(`
+      SELECT id, username, password_hash, role, two_fa_enabled, totp_secret, backup_codes
+      FROM admin_users 
+      WHERE username = ? AND is_active = TRUE
+    `).bind(username).first();
+    
+    if (!user) {
+      return c.json({
+        success: false,
+        message: 'Invalid username or password'
+      }, 401);
+    }
+    
+    // Verify password
+    const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
+    if (!passwordValid) {
+      return c.json({
+        success: false,
+        message: 'Invalid username or password'
+      }, 401);
+    }
+    
+    // If 2FA is enabled, verify the code
+    if (user.two_fa_enabled) {
+      if (!totp_code && !backup_code) {
+        return c.json({
+          success: false,
+          requires_2fa: true,
+          message: '2FA code required'
+        }, 200); // Not 401 since username/password were correct
+      }
+      
+      let codeValid = false;
+      
+      // Try TOTP code first
+      if (totp_code && user.totp_secret) {
+        codeValid = authenticator.verify({
+          token: totp_code,
+          secret: user.totp_secret
+        });
+      }
+      
+      // Try backup code if TOTP failed
+      if (!codeValid && backup_code && user.backup_codes) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(backup_code.toUpperCase());
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        const backupCodeHash = Array.from(new Uint8Array(hash))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        
+        const storedCodes = JSON.parse(user.backup_codes);
+        codeValid = storedCodes.includes(backupCodeHash);
+        
+        // Remove used backup code
+        if (codeValid) {
+          const updatedCodes = storedCodes.filter((code: string) => code !== backupCodeHash);
+          await db.db.prepare(`
+            UPDATE admin_users SET backup_codes = ? WHERE id = ?
+          `).bind(JSON.stringify(updatedCodes), user.id).run();
+        }
+      }
+      
+      if (!codeValid) {
+        return c.json({
+          success: false,
+          message: 'Invalid 2FA code'
+        }, 401);
+      }
+    }
+    
+    // Generate JWT token
+    const token = await signJWT({
+      userId: user.id,
+      username: user.username,
+      role: user.role
+    });
+    
+    // Log successful login
+    console.log(`Admin login successful: ${user.username} (2FA: ${user.two_fa_enabled ? 'Yes' : 'No'})`);
+    
+    return c.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        two_fa_enabled: user.two_fa_enabled
+      }
+    });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    return c.json({
+      success: false,
+      message: 'Login failed'
+    }, 500);
+  }
+});
+
+/**
+ * Maintenance Mode Management
+ */
+
+// Get maintenance mode status
+admin.get('/maintenance/status', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const setting = await db.db.prepare(`
+      SELECT value FROM system_settings WHERE key = 'maintenance_mode'
+    `).bind().first();
+    
+    const maintenanceMode = setting?.value === 'true';
+    
+    return c.json({
+      success: true,
+      maintenance_mode: maintenanceMode
+    });
+    
+  } catch (error) {
+    console.error('Get maintenance status error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to get maintenance status'
+    }, 500);
+  }
+});
+
+// Get maintenance configuration  
+admin.get('/maintenance/config', authMiddleware, async (c) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    const settings = await db.db.prepare(`
+      SELECT key, value FROM system_settings 
+      WHERE key IN ('maintenance_mode', 'maintenance_message', 'maintenance_type', 'maintenance_duration_minutes')
+    `).all();
+    
+    const config = {};
+    settings.results.forEach(setting => {
+      config[setting.key.replace('maintenance_', '')] = setting.value;
+    });
+    
+    return c.json({
+      success: true,
+      maintenance_mode: config.mode === 'true',
+      type: config.type || 'planned',
+      message: config.message || 'System is currently under maintenance.',
+      duration_minutes: parseInt(config.duration_minutes) || 60
+    });
+    
+  } catch (error) {
+    console.error('Get maintenance config error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to get maintenance configuration'
+    }, 500);
+  }
+});
+
+// Configure advanced maintenance mode
+admin.post('/maintenance/configure', authMiddleware, async (c) => {
+  try {
+    const { enabled, type, message, duration_minutes } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Validate inputs
+    if (typeof enabled !== 'boolean') {
+      return c.json({
+        success: false,
+        message: 'enabled must be a boolean value'
+      }, 400);
+    }
+    
+    if (enabled) {
+      if (!message || message.trim().length === 0) {
+        return c.json({
+          success: false,
+          message: 'Maintenance message is required'
+        }, 400);
+      }
+      
+      if (!duration_minutes || duration_minutes < 5) {
+        return c.json({
+          success: false,
+          message: 'Duration must be at least 5 minutes'
+        }, 400);
+      }
+      
+      const validTypes = ['planned', 'emergency', 'updates', 'migrations', 'custom'];
+      if (!validTypes.includes(type)) {
+        return c.json({
+          success: false,
+          message: 'Invalid maintenance type'
+        }, 400);
+      }
+    }
+    
+    // Calculate completion time
+    const startedAt = new Date().toISOString();
+    const completionTime = new Date(Date.now() + (duration_minutes * 60 * 1000)).toISOString();
+    
+    // Update all maintenance settings
+    const settings = [
+      ['maintenance_mode', enabled.toString()],
+      ['maintenance_type', type || 'planned'],
+      ['maintenance_message', message || 'System under maintenance'],
+      ['maintenance_duration_minutes', duration_minutes?.toString() || '60'],
+      ['maintenance_started_at', enabled ? startedAt : ''],
+      ['maintenance_completion_time', enabled ? completionTime : '']
+    ];
+    
+    for (const [key, value] of settings) {
+      await db.db.prepare(`
+        INSERT OR REPLACE INTO system_settings (category, key, value, description)
+        VALUES ('maintenance', ?, ?, ?)
+      `).bind(key, value, `Maintenance mode setting: ${key}`).run();
+    }
+    
+    // Log maintenance event
+    if (enabled) {
+      await db.db.prepare(`
+        INSERT INTO maintenance_events (type, message, duration_minutes, started_by_admin_id, status)
+        VALUES (?, ?, ?, ?, 'active')
+      `).bind(type, message, duration_minutes, adminUser.id).run();
+    } else {
+      // Complete any active maintenance events
+      await db.db.prepare(`
+        UPDATE maintenance_events 
+        SET status = 'completed', completed_at = CURRENT_TIMESTAMP,
+            actual_duration_minutes = CAST((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 24 * 60 AS INTEGER)
+        WHERE status = 'active'
+      `).run();
+    }
+    
+    // Log the action
+    console.log(`Maintenance mode ${enabled ? 'enabled' : 'disabled'} by admin: ${adminUser.username} (Type: ${type}, Duration: ${duration_minutes}min)`);
+    
+    return c.json({
+      success: true,
+      maintenance_mode: enabled,
+      type,
+      user_message: message,
+      duration_minutes,
+      completion_time: enabled ? completionTime : null,
+      message: `Maintenance mode ${enabled ? 'enabled' : 'disabled'} successfully`
+    });
+    
+  } catch (error) {
+    console.error('Configure maintenance mode error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to configure maintenance mode'
+    }, 500);
+  }
+});
+
+// Toggle maintenance mode (legacy endpoint for backward compatibility)
+admin.post('/maintenance/toggle', authMiddleware, async (c) => {
+  try {
+    const { enabled } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (typeof enabled !== 'boolean') {
+      return c.json({
+        success: false,
+        message: 'enabled must be a boolean value'
+      }, 400);
+    }
+    
+    // Use default settings for simple toggle
+    const defaultMessage = 'System is currently under maintenance. Please try again later.';
+    const defaultDuration = 60;
+    
+    // Update maintenance mode setting
+    await db.db.prepare(`
+      INSERT OR REPLACE INTO system_settings (category, key, value, description)
+      VALUES ('maintenance', 'maintenance_mode', ?, 'Enable/disable maintenance mode to block API access')
+    `).bind(enabled.toString()).run();
+    
+    if (enabled) {
+      await db.db.prepare(`
+        INSERT OR REPLACE INTO system_settings (category, key, value, description)
+        VALUES ('maintenance', 'maintenance_message', ?, 'Default maintenance message')
+      `).bind(defaultMessage).run();
+    }
+    
+    // Log the action
+    console.log(`Maintenance mode ${enabled ? 'enabled' : 'disabled'} by admin: ${adminUser.username}`);
+    
+    return c.json({
+      success: true,
+      maintenance_mode: enabled,
+      message: `Maintenance mode ${enabled ? 'enabled' : 'disabled'} successfully`
+    });
+    
+  } catch (error) {
+    console.error('Toggle maintenance mode error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to toggle maintenance mode'
+    }, 500);
+  }
+});
+
 // Note: System health monitoring now handled by SystemHealthMonitor utility
 // Real-time database health checks, response time tracking, and uptime calculation
 

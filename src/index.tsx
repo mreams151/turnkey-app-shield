@@ -25,6 +25,49 @@ app.use('/api/*', cors({
   credentials: true
 }));
 
+// Maintenance mode middleware - blocks public APIs during maintenance
+const maintenanceMiddleware = async (c: any, next: any) => {
+  try {
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Check if maintenance mode is enabled
+    const setting = await db.db.prepare(`
+      SELECT value FROM system_settings WHERE key = 'maintenance_mode'
+    `).first();
+    
+    if (setting?.value === 'true') {
+      // Get maintenance details
+      const details = await db.db.prepare(`
+        SELECT key, value FROM system_settings 
+        WHERE key IN ('maintenance_message', 'maintenance_type', 'maintenance_completion_time')
+      `).all();
+      
+      const maintenanceInfo: any = {};
+      details.results.forEach((item: any) => {
+        maintenanceInfo[item.key.replace('maintenance_', '')] = item.value;
+      });
+      
+      return c.json({
+        success: false,
+        maintenance_mode: true,
+        message: maintenanceInfo.message || 'System is currently under maintenance. Please try again later.',
+        type: maintenanceInfo.type || 'planned',
+        expected_completion: maintenanceInfo.completion_time || null
+      }, 503);
+    }
+    
+    await next();
+  } catch (error) {
+    console.error('Maintenance middleware error:', error);
+    await next(); // Continue on error to avoid breaking the system
+  }
+};
+
+// Apply maintenance middleware to public endpoints (exclude admin)
+app.use('/api/license/*', maintenanceMiddleware);
+app.use('/portal/*', maintenanceMiddleware);
+app.use('/register', maintenanceMiddleware);
+
 // Serve static files from public directory
 app.use('/static/*', serveStatic({ root: './public' }));
 

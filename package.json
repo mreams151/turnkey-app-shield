@@ -26,13 +26,16 @@
     "start:pm2": "pm2 start ecosystem.config.cjs"
   },
   "dependencies": {
-    "hono": "^4.9.8",
     "@hono/zod-validator": "^0.3.0",
-    "zod": "^3.22.0",
+    "@types/qrcode": "^1.5.5",
     "bcryptjs": "^2.4.3",
+    "crypto-js": "^4.2.0",
+    "hono": "^4.9.8",
     "jsonwebtoken": "^9.0.0",
     "nanoid": "^5.0.0",
-    "crypto-js": "^4.2.0"
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250705.0",

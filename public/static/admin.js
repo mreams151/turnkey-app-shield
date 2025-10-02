@@ -83,8 +83,36 @@ class AdminPanel {
                             </div>
                             <div>
                                 <input id="password" name="password" type="password" required
-                                    class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
+                                    class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
                                     placeholder="Password">
+                            </div>
+                            
+                            <!-- 2FA Fields (initially hidden) -->
+                            <div id="2fa-fields" class="hidden">
+                                <div>
+                                    <input id="totp-code" name="totp-code" type="text" maxlength="6"
+                                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
+                                        placeholder="2FA Code (123456)">
+                                </div>
+                                <div class="text-center mt-2">
+                                    <button type="button" id="use-backup-code" class="text-xs text-blue-600 hover:text-blue-500">
+                                        Use backup code instead
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Backup Code Field (initially hidden) -->
+                            <div id="backup-code-fields" class="hidden">
+                                <div>
+                                    <input id="backup-code" name="backup-code" type="text" maxlength="10"
+                                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue focus:z-10 sm:text-sm"
+                                        placeholder="Backup Code">
+                                </div>
+                                <div class="text-center mt-2">
+                                    <button type="button" id="use-totp-code" class="text-xs text-blue-600 hover:text-blue-500">
+                                        Use authenticator app instead
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -108,11 +136,28 @@ class AdminPanel {
             e.preventDefault();
             this.handleLogin();
         });
+        
+        // Setup 2FA toggle buttons
+        document.getElementById('use-backup-code')?.addEventListener('click', () => {
+            document.getElementById('2fa-fields').classList.add('hidden');
+            document.getElementById('backup-code-fields').classList.remove('hidden');
+            document.getElementById('totp-code').value = '';
+            document.getElementById('backup-code').focus();
+        });
+        
+        document.getElementById('use-totp-code')?.addEventListener('click', () => {
+            document.getElementById('backup-code-fields').classList.add('hidden');
+            document.getElementById('2fa-fields').classList.remove('hidden');
+            document.getElementById('backup-code').value = '';
+            document.getElementById('totp-code').focus();
+        });
     }
 
     async handleLogin() {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
+        const totpCode = document.getElementById('totp-code')?.value || '';
+        const backupCode = document.getElementById('backup-code')?.value || '';
         const loginBtn = document.getElementById('login-btn');
         const errorDiv = document.getElementById('login-error');
 
@@ -121,23 +166,57 @@ class AdminPanel {
         errorDiv.classList.add('hidden');
 
         try {
+            // Try the new 2FA-aware login endpoint first
+            const loginData = {
+                username: username,
+                password: password
+            };
             
-            const response = await axios.post(`${this.apiBaseUrl}/admin/auth`, {
-                username: username, // Send username field
-                password
-            });
+            // Add 2FA codes if provided
+            if (totpCode) {
+                loginData.totp_code = totpCode;
+            }
+            if (backupCode) {
+                loginData.backup_code = backupCode;
+            }
+            
+            const response = await axios.post(`${this.apiBaseUrl}/admin/login-2fa`, loginData);
 
             if (response.data.success) {
                 this.token = response.data.token;
-                this.currentUser = response.data.admin || response.data.user;  // Handle both formats
+                this.currentUser = response.data.user;
                 localStorage.setItem('admin_token', this.token);
                 
-                
                 await this.loadDashboard();
+            } else if (response.data.requires_2fa) {
+                // Show 2FA fields
+                this.show2FALogin();
+                throw new Error(response.data.message || '2FA code required');
             } else {
                 throw new Error(response.data.message || 'Login failed');
             }
         } catch (error) {
+            // If 2FA endpoint fails, try fallback to original auth endpoint
+            if (error.response?.status === 404 && !totpCode && !backupCode) {
+                try {
+                    const fallbackResponse = await axios.post(`${this.apiBaseUrl}/admin/auth`, {
+                        username: username,
+                        password: password
+                    });
+
+                    if (fallbackResponse.data.success) {
+                        this.token = fallbackResponse.data.token;
+                        this.currentUser = fallbackResponse.data.admin || fallbackResponse.data.user;
+                        localStorage.setItem('admin_token', this.token);
+                        
+                        await this.loadDashboard();
+                        return; // Exit successfully
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback login failed:', fallbackError);
+                }
+            }
+            
             console.error('=== LOGIN ERROR ===', error);
             console.error('Error response:', error.response?.data);
             console.error('Error status:', error.response?.status);
@@ -149,6 +228,25 @@ class AdminPanel {
             loginBtn.innerHTML = 'Sign In';
             loginBtn.disabled = false;
         }
+    }
+    
+    show2FALogin() {
+        // Make sure password field doesn't have rounded bottom corners
+        const passwordField = document.getElementById('password');
+        passwordField.className = passwordField.className.replace('rounded-b-md', '');
+        
+        // Show 2FA fields
+        document.getElementById('2fa-fields').classList.remove('hidden');
+        
+        // Update the last field to have rounded bottom corners
+        const totpField = document.getElementById('totp-code');
+        totpField.className = totpField.className.replace('rounded-b-md', '') + ' rounded-b-md';
+        
+        // Focus on the 2FA code field
+        document.getElementById('totp-code').focus();
+        
+        // Update button text
+        document.getElementById('login-btn').innerHTML = 'Sign In with 2FA';
     }
 
     async loadDashboard() {
@@ -4485,15 +4583,74 @@ class AdminPanel {
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
 
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <label class="text-sm font-medium text-gray-700">Maintenance Mode</label>
-                                <p class="text-sm text-gray-500">Disable public API access</p>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700">Maintenance Mode</label>
+                                    <p class="text-sm text-gray-500">Configure system maintenance settings</p>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <span id="maintenance-status" class="text-sm font-medium text-green-600">Active</span>
+                                    <button id="configure-maintenance" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                                        Configure
+                                    </button>
+                                </div>
                             </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
+                            
+                            <!-- Maintenance Configuration Modal -->
+                            <div id="maintenance-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-96 overflow-y-auto">
+                                    <h3 class="text-lg font-semibold mb-4">Maintenance Mode Configuration</h3>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- Enable/Disable Toggle -->
+                                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                            <div>
+                                                <label class="text-sm font-medium text-gray-700">Enable Maintenance Mode</label>
+                                                <p class="text-xs text-gray-500">Block public API access</p>
+                                            </div>
+                                            <label class="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" id="maintenance-mode-toggle" class="sr-only peer">
+                                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                            </label>
+                                        </div>
+                                        
+                                        <!-- Maintenance Type -->
+                                        <div id="maintenance-config" class="hidden space-y-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Maintenance Type</label>
+                                                <select id="maintenance-type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                                    <option value="planned">📊 Planned Maintenance</option>
+                                                    <option value="emergency">🚨 Emergency Maintenance</option>
+                                                    <option value="updates">🛠️ System Updates</option>
+                                                    <option value="migrations">🔄 Database Migration</option>
+                                                    <option value="custom">✏️ Custom Message</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <!-- Custom Message -->
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                                                <textarea id="maintenance-message" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Custom maintenance message..."></textarea>
+                                            </div>
+                                            
+                                            <!-- Duration -->
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Expected Duration</label>
+                                                <div class="flex items-center space-x-2">
+                                                    <input type="number" id="maintenance-duration" min="5" max="1440" value="60" class="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                                    <span class="text-sm text-gray-500">minutes</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex justify-end space-x-3 mt-6">
+                                        <button id="cancel-maintenance" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                                        <button id="save-maintenance" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Apply Settings</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -4528,9 +4685,62 @@ class AdminPanel {
                                 <p class="text-sm text-gray-500">Require two-factor authentication</p>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" class="sr-only peer">
+                                <input type="checkbox" id="2fa-toggle" class="sr-only peer">
                                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                             </label>
+                        </div>
+                        
+                        <!-- 2FA Setup Modal Container -->
+                        <div id="2fa-setup-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                <div id="2fa-step-1" class="twofa-step">
+                                    <h3 class="text-lg font-semibold mb-4">Setup Two-Factor Authentication</h3>
+                                    <p class="text-gray-600 mb-4">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+                                    <div class="text-center mb-4">
+                                        <img id="qr-code-img" src="" alt="QR Code" class="mx-auto">
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">Secret Key (Manual Entry):</label>
+                                        <code id="secret-key" class="block p-2 bg-gray-100 rounded text-sm break-all"></code>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">Enter 6-digit code from your app:</label>
+                                        <input type="text" id="2fa-verification-code" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="123456" maxlength="6">
+                                    </div>
+                                    <div class="flex justify-end space-x-3">
+                                        <button id="cancel-2fa-setup" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                                        <button id="verify-2fa-setup" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Verify & Enable</button>
+                                    </div>
+                                </div>
+                                
+                                <div id="2fa-step-2" class="twofa-step hidden">
+                                    <h3 class="text-lg font-semibold mb-4">2FA Enabled Successfully!</h3>
+                                    <p class="text-gray-600 mb-4">Save these backup codes in a secure place. You can use them to access your account if you lose your authenticator device.</p>
+                                    <div class="bg-gray-50 p-4 rounded mb-4">
+                                        <div id="backup-codes-list" class="grid grid-cols-2 gap-2 text-sm font-mono"></div>
+                                    </div>
+                                    <div class="flex justify-end">
+                                        <button id="finish-2fa-setup" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">I've Saved My Codes</button>
+                                    </div>
+                                </div>
+                                
+                                <div id="2fa-disable-confirm" class="twofa-step hidden">
+                                    <h3 class="text-lg font-semibold mb-4">Disable Two-Factor Authentication</h3>
+                                    <p class="text-gray-600 mb-4">Please confirm your password and 2FA code to disable two-factor authentication.</p>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">Password:</label>
+                                        <input type="password" id="disable-2fa-password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">2FA Code:</label>
+                                        <input type="text" id="disable-2fa-code" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="123456" maxlength="6">
+                                    </div>
+                                    <div class="flex justify-end space-x-3">
+                                        <button id="cancel-2fa-disable" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                                        <button id="confirm-2fa-disable" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Disable 2FA</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -4545,6 +4755,418 @@ class AdminPanel {
                 </button>
             </div>
         `;
+        
+        // Initialize settings functionality after DOM is created
+        this.initializeSettingsHandlers();
+    }
+
+    // Settings Management
+    async initializeSettingsHandlers() {
+        // Load current 2FA status
+        await this.load2FAStatus();
+        
+        // Load maintenance mode status
+        await this.loadMaintenanceStatus();
+        
+        // Setup event listeners
+        this.setup2FAHandlers();
+        this.setupMaintenanceModeHandler();
+    }
+    
+    async load2FAStatus() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/status`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                const toggle = document.getElementById('2fa-toggle');
+                if (toggle) {
+                    toggle.checked = data.two_fa_enabled;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading 2FA status:', error);
+        }
+    }
+    
+    async loadMaintenanceStatus() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/maintenance/config`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                // Update status display
+                this.updateMaintenanceStatus(data.maintenance_mode);
+            }
+        } catch (error) {
+            console.error('Error loading maintenance status:', error);
+        }
+    }
+    
+    setup2FAHandlers() {
+        const toggle = document.getElementById('2fa-toggle');
+        const modal = document.getElementById('2fa-setup-modal');
+        
+        if (!toggle || !modal) return;
+        
+        toggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                // User wants to enable 2FA
+                this.start2FASetup();
+            } else {
+                // User wants to disable 2FA
+                this.show2FADisableConfirm();
+            }
+        });
+        
+        // Cancel setup
+        document.getElementById('cancel-2fa-setup')?.addEventListener('click', () => {
+            this.cancel2FASetup();
+        });
+        
+        // Verify setup
+        document.getElementById('verify-2fa-setup')?.addEventListener('click', () => {
+            this.verify2FASetup();
+        });
+        
+        // Finish setup
+        document.getElementById('finish-2fa-setup')?.addEventListener('click', () => {
+            this.finish2FASetup();
+        });
+        
+        // Cancel disable
+        document.getElementById('cancel-2fa-disable')?.addEventListener('click', () => {
+            this.cancel2FADisable();
+        });
+        
+        // Confirm disable
+        document.getElementById('confirm-2fa-disable')?.addEventListener('click', () => {
+            this.confirm2FADisable();
+        });
+        
+        // Enter key handling for verification code
+        document.getElementById('2fa-verification-code')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.verify2FASetup();
+            }
+        });
+    }
+    
+    setupMaintenanceModeHandler() {
+        const configureBtn = document.getElementById('configure-maintenance');
+        const modal = document.getElementById('maintenance-modal');
+        const toggle = document.getElementById('maintenance-mode-toggle');
+        const configSection = document.getElementById('maintenance-config');
+        const typeSelect = document.getElementById('maintenance-type');
+        const messageInput = document.getElementById('maintenance-message');
+        
+        if (!configureBtn || !modal) return;
+        
+        // Show configuration modal
+        configureBtn.addEventListener('click', () => {
+            this.showMaintenanceModal();
+        });
+        
+        // Cancel button
+        document.getElementById('cancel-maintenance')?.addEventListener('click', () => {
+            this.hideMaintenanceModal();
+        });
+        
+        // Save button
+        document.getElementById('save-maintenance')?.addEventListener('click', () => {
+            this.saveMaintenanceConfig();
+        });
+        
+        // Toggle maintenance mode
+        toggle?.addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            configSection.classList.toggle('hidden', !enabled);
+            
+            if (enabled) {
+                // Set default message based on type
+                this.updateMaintenanceMessage();
+            }
+        });
+        
+        // Update message when type changes
+        typeSelect?.addEventListener('change', () => {
+            this.updateMaintenanceMessage();
+        });
+    }
+    
+    showMaintenanceModal() {
+        document.getElementById('maintenance-modal').classList.remove('hidden');
+        this.loadCurrentMaintenanceConfig();
+    }
+    
+    hideMaintenanceModal() {
+        document.getElementById('maintenance-modal').classList.add('hidden');
+    }
+    
+    async loadCurrentMaintenanceConfig() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/maintenance/config`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                document.getElementById('maintenance-mode-toggle').checked = data.maintenance_mode;
+                document.getElementById('maintenance-type').value = data.type || 'planned';
+                document.getElementById('maintenance-message').value = data.message || '';
+                document.getElementById('maintenance-duration').value = data.duration_minutes || 60;
+                
+                // Show/hide config section
+                const configSection = document.getElementById('maintenance-config');
+                configSection.classList.toggle('hidden', !data.maintenance_mode);
+                
+                this.updateMaintenanceStatus(data.maintenance_mode);
+            }
+        } catch (error) {
+            console.error('Error loading maintenance config:', error);
+        }
+    }
+    
+    updateMaintenanceMessage() {
+        const type = document.getElementById('maintenance-type').value;
+        const messageInput = document.getElementById('maintenance-message');
+        
+        const messages = {
+            'planned': 'Scheduled maintenance in progress. We\'ll be back shortly.',
+            'emergency': 'Emergency maintenance in progress. Please check back soon.',
+            'updates': 'System updates are being installed. Service will resume shortly.',
+            'migrations': 'Database migration in progress. Expected completion in 60 minutes.',
+            'custom': ''
+        };
+        
+        if (type !== 'custom') {
+            messageInput.value = messages[type];
+        }
+        
+        // Enable/disable message input based on type
+        messageInput.disabled = type !== 'custom';
+    }
+    
+    async saveMaintenanceConfig() {
+        const enabled = document.getElementById('maintenance-mode-toggle').checked;
+        const type = document.getElementById('maintenance-type').value;
+        const message = document.getElementById('maintenance-message').value.trim();
+        const duration = parseInt(document.getElementById('maintenance-duration').value);
+        
+        if (enabled && !message) {
+            this.showError('Maintenance message is required');
+            return;
+        }
+        
+        if (enabled && (!duration || duration < 5)) {
+            this.showError('Duration must be at least 5 minutes');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/maintenance/configure`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    enabled,
+                    type,
+                    message,
+                    duration_minutes: duration
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.showNotification(data.message, 'success');
+                this.updateMaintenanceStatus(enabled);
+                this.hideMaintenanceModal();
+            } else {
+                this.showError(data.message || 'Failed to configure maintenance mode');
+            }
+        } catch (error) {
+            this.showError('Failed to configure maintenance mode');
+        }
+    }
+    
+    updateMaintenanceStatus(isActive) {
+        const statusElement = document.getElementById('maintenance-status');
+        if (statusElement) {
+            statusElement.textContent = isActive ? 'Maintenance Mode ON' : 'Normal Operations';
+            statusElement.className = isActive 
+                ? 'text-sm font-medium text-red-600'
+                : 'text-sm font-medium text-green-600';
+        }
+    }
+    
+    async start2FASetup() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/setup`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            const data = await response.json();
+            console.log('2FA setup response:', data); // Debug logging
+            
+            if (response.ok && data.success) {
+                // Verify modal elements exist
+                const qrImg = document.getElementById('qr-code-img');
+                const secretKey = document.getElementById('secret-key');
+                
+                if (!qrImg || !secretKey) {
+                    console.error('2FA modal elements not found');
+                    this.showError('2FA setup interface not ready. Please refresh and try again.');
+                    document.getElementById('2fa-toggle').checked = false;
+                    return;
+                }
+                
+                // Show QR code
+                qrImg.src = data.qr_code;
+                secretKey.textContent = data.secret;
+                
+                // Show setup modal
+                this.show2FAStep('2fa-step-1');
+            } else {
+                console.error('2FA setup failed:', data);
+                this.showError(data.message || 'Failed to setup 2FA');
+                document.getElementById('2fa-toggle').checked = false;
+            }
+        } catch (error) {
+            console.error('2FA setup error:', error);
+            this.showError('Failed to setup 2FA: ' + error.message);
+            document.getElementById('2fa-toggle').checked = false;
+        }
+    }
+    
+    async verify2FASetup() {
+        const code = document.getElementById('2fa-verification-code').value.trim();
+        
+        if (!code || code.length !== 6) {
+            this.showError('Please enter a valid 6-digit code');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/verify-setup`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Show backup codes
+                this.displayBackupCodes(data.backup_codes);
+                this.show2FAStep('2fa-step-2');
+            } else {
+                this.showError(data.message || 'Invalid verification code');
+            }
+        } catch (error) {
+            this.showError('Failed to verify 2FA setup');
+        }
+    }
+    
+    displayBackupCodes(codes) {
+        const container = document.getElementById('backup-codes-list');
+        container.innerHTML = '';
+        
+        codes.forEach(code => {
+            const codeDiv = document.createElement('div');
+            codeDiv.className = 'p-2 bg-white rounded border text-center';
+            codeDiv.textContent = code;
+            container.appendChild(codeDiv);
+        });
+    }
+    
+    show2FAStep(stepId) {
+        // Hide all steps
+        document.querySelectorAll('.twofa-step').forEach(step => {
+            step.classList.add('hidden');
+        });
+        
+        // Show selected step
+        document.getElementById(stepId)?.classList.remove('hidden');
+        
+        // Show modal
+        document.getElementById('2fa-setup-modal').classList.remove('hidden');
+    }
+    
+    hide2FAModal() {
+        document.getElementById('2fa-setup-modal').classList.add('hidden');
+        
+        // Clear form data
+        document.getElementById('2fa-verification-code').value = '';
+        document.getElementById('disable-2fa-password').value = '';
+        document.getElementById('disable-2fa-code').value = '';
+    }
+    
+    finish2FASetup() {
+        this.hide2FAModal();
+        this.showNotification('2FA enabled successfully!', 'success');
+    }
+    
+    cancel2FASetup() {
+        document.getElementById('2fa-toggle').checked = false;
+        this.hide2FAModal();
+    }
+    
+    show2FADisableConfirm() {
+        this.show2FAStep('2fa-disable-confirm');
+    }
+    
+    cancel2FADisable() {
+        document.getElementById('2fa-toggle').checked = true;
+        this.hide2FAModal();
+    }
+    
+    async confirm2FADisable() {
+        const password = document.getElementById('disable-2fa-password').value.trim();
+        const code = document.getElementById('disable-2fa-code').value.trim();
+        
+        if (!password) {
+            this.showError('Password is required');
+            return;
+        }
+        
+        if (!code || code.length !== 6) {
+            this.showError('Please enter a valid 6-digit 2FA code');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/disable`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password, code })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.hide2FAModal();
+                this.showNotification('2FA disabled successfully', 'success');
+            } else {
+                this.showError(data.message || 'Failed to disable 2FA');
+            }
+        } catch (error) {
+            this.showError('Failed to disable 2FA');
+        }
     }
 
     // Utility methods
