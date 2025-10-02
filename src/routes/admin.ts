@@ -1933,10 +1933,29 @@ admin.post('/maintenance/cleanup', authMiddleware, async (c) => {
  */
 admin.get('/backups', authMiddleware, async (c) => {
   try {
-    // Stub implementation - return empty backups list
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get all backups with basic info (without backup_data for performance)
+    const backups = await db.db.prepare(`
+      SELECT id, backup_name, original_size, file_size, table_count,
+             tables_included, record_counts, description, created_by,
+             created_at, updated_at, status
+      FROM database_backups
+      ORDER BY created_at DESC
+    `).all();
+    
+    // Transform backup data for frontend
+    const transformedBackups = (backups.results || []).map(backup => ({
+      ...backup,
+      tables_included: backup.tables_included ? JSON.parse(backup.tables_included) : [],
+      record_counts: backup.record_counts ? JSON.parse(backup.record_counts) : {},
+      size_mb: Math.round((backup.file_size || 0) / 1024 / 1024 * 100) / 100,
+      created_at_formatted: new Date(backup.created_at).toLocaleString()
+    }));
+    
     return c.json({
       success: true,
-      backups: []
+      backups: transformedBackups
     });
 
   } catch (error) {
@@ -2248,16 +2267,65 @@ admin.get('/logs/actions', authMiddleware, async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1');
     const limit = parseInt(c.req.query('limit') || '50');
+    const action = c.req.query('action') || '';
+    const entity = c.req.query('entity') || '';
+    const username = c.req.query('username') || '';
     
-    // Stub implementation - return empty logs
+    const db = new DatabaseManager(c.env.DB);
+    const offset = (page - 1) * limit;
+    
+    // Build query with filters
+    let query = `
+      SELECT id, admin_username, action, entity_type, entity_id, 
+             details, ip_address, success, created_at
+      FROM admin_logs
+      WHERE 1=1
+    `;
+    let countQuery = 'SELECT COUNT(*) as total FROM admin_logs WHERE 1=1';
+    const params: any[] = [];
+    
+    if (action) {
+      query += ` AND action = ?`;
+      countQuery += ` AND action = ?`;
+      params.push(action);
+    }
+    
+    if (entity) {
+      query += ` AND entity_type = ?`;
+      countQuery += ` AND entity_type = ?`;
+      params.push(entity);
+    }
+    
+    if (username) {
+      query += ` AND admin_username = ?`;
+      countQuery += ` AND admin_username = ?`;
+      params.push(username);
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    const queryParams = [...params, limit, offset];
+    const countParams = params.slice(); // Copy for count query
+    
+    const [logs, total] = await Promise.all([
+      db.db.prepare(query).bind(...queryParams).all(),
+      db.db.prepare(countQuery).bind(...countParams).first<{ total: number }>()
+    ]);
+    
+    // Transform logs data
+    const transformedLogs = (logs.results || []).map(log => ({
+      ...log,
+      details: log.details ? JSON.parse(log.details) : {},
+      timestamp: log.created_at
+    }));
+    
     return c.json({
       success: true,
-      logs: [],
+      logs: transformedLogs,
       pagination: {
         page,
         limit,
-        total: 0,
-        pages: 0
+        total: total?.total || 0,
+        pages: Math.ceil((total?.total || 0) / limit)
       }
     });
   } catch (error) {
