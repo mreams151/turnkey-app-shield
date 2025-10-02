@@ -2684,6 +2684,40 @@ class AdminPanel {
                         <p class="text-sm text-gray-500 mt-1">Direct link where customers will download the software</p>
                     </div>
 
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Price</label>
+                            <input type="number" id="product-price" step="0.01" min="0"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="0.00" value="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                            <select id="product-currency"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                                <option value="GBP">GBP - British Pound</option>
+                                <option value="CAD">CAD - Canadian Dollar</option>
+                                <option value="AUD">AUD - Australian Dollar</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                            <input type="text" id="product-category"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="e.g., Business Software, Games, Utilities">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                        <input type="text" id="product-tags"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="tag1, tag2, tag3 (comma-separated)">
+                        <p class="text-sm text-gray-500 mt-1">Add tags to help categorize and search for this product</p>
+                    </div>
+
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Rule Template *</label>
                         <select id="product-rules" required
@@ -2750,6 +2784,10 @@ class AdminPanel {
         const description = document.getElementById('product-description').value.trim();
         const downloadUrl = document.getElementById('product-download-url').value.trim();
         const selectedRuleId = document.getElementById('product-rules').value;
+        const price = parseFloat(document.getElementById('product-price').value) || 0.00;
+        const currency = document.getElementById('product-currency').value;
+        const category = document.getElementById('product-category').value.trim();
+        const tags = document.getElementById('product-tags').value.trim();
         const errorDiv = document.getElementById('product-error');
         const saveBtn = document.getElementById('save-product-btn');
 
@@ -2769,7 +2807,11 @@ class AdminPanel {
                 version: version,
                 description: description,
                 download_url: downloadUrl,
-                rule_id: parseInt(selectedRuleId)
+                rule_id: parseInt(selectedRuleId),
+                price: price,
+                currency: currency,
+                category: category,
+                tags: tags
             });
 
             if (response.success) {
@@ -2982,6 +3024,42 @@ class AdminPanel {
                         <p class="text-sm text-gray-500 mt-1">Select a rule template for this product</p>
                     </div>
 
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Price</label>
+                            <input type="number" id="edit-product-price" step="0.01" min="0"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="0.00" value="${product.price || '0.00'}">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                            <select id="edit-product-currency"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="USD" ${(product.currency || 'USD') === 'USD' ? 'selected' : ''}>USD - US Dollar</option>
+                                <option value="EUR" ${(product.currency || 'USD') === 'EUR' ? 'selected' : ''}>EUR - Euro</option>
+                                <option value="GBP" ${(product.currency || 'USD') === 'GBP' ? 'selected' : ''}>GBP - British Pound</option>
+                                <option value="CAD" ${(product.currency || 'USD') === 'CAD' ? 'selected' : ''}>CAD - Canadian Dollar</option>
+                                <option value="AUD" ${(product.currency || 'USD') === 'AUD' ? 'selected' : ''}>AUD - Australian Dollar</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                            <input type="text" id="edit-product-category"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="e.g., Business Software, Games, Utilities"
+                                value="${product.category || ''}">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                        <input type="text" id="edit-product-tags"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Comma-separated tags (e.g., Windows, Professional, Enterprise)"
+                            value="${product.tags || ''}">
+                        <p class="text-sm text-gray-500 mt-1">Use commas to separate multiple tags</p>
+                    </div>
+
                     <div id="edit-product-error" class="hidden text-red-600 text-sm"></div>
 
                     <div class="flex justify-between">
@@ -3042,6 +3120,10 @@ class AdminPanel {
         const description = document.getElementById('edit-product-description').value.trim();
         const downloadUrl = document.getElementById('edit-product-download-url').value.trim();
         const selectedRuleId = document.getElementById('edit-product-rules').value;
+        const price = parseFloat(document.getElementById('edit-product-price').value) || 0.00;
+        const currency = document.getElementById('edit-product-currency').value;
+        const category = document.getElementById('edit-product-category').value.trim();
+        const tags = document.getElementById('edit-product-tags').value.trim();
         const errorDiv = document.getElementById('edit-product-error');
         const saveBtn = document.getElementById('save-edit-product-btn');
 
@@ -3061,7 +3143,11 @@ class AdminPanel {
                 version: version,
                 description: description,
                 download_url: downloadUrl,
-                rule_id: parseInt(selectedRuleId)
+                rule_id: parseInt(selectedRuleId),
+                price: price,
+                currency: currency,
+                category: category,
+                tags: tags
             });
 
             if (response.success) {

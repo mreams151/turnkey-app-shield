@@ -190,7 +190,11 @@ const productSchema = z.object({
   version: z.string().min(1, 'Version is required'),
   description: z.string().optional(),
   download_url: z.string().url('Download URL must be a valid URL'),
-  rule_id: z.number().int().positive('Rule ID must be a positive integer')
+  rule_id: z.number().int().positive('Rule ID must be a positive integer'),
+  price: z.number().min(0, 'Price must be 0 or greater').optional().default(0.00),
+  currency: z.string().min(3, 'Currency must be 3 characters').max(3).optional().default('USD'),
+  category: z.string().optional(),
+  tags: z.string().optional()
 });
 
 /**
@@ -1171,14 +1175,19 @@ admin.post('/products', authMiddleware, async (c) => {
     const result = await db.db.prepare(`
       INSERT INTO products (
         name, version, description, rule_id, download_url,
+        price, currency, category, tags,
         status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
       validation.data.name,
       validation.data.version,
       validation.data.description || null,
       ruleId,
-      validation.data.download_url
+      validation.data.download_url,
+      validation.data.price || 0.00,
+      validation.data.currency || 'USD',
+      validation.data.category || null,
+      validation.data.tags || null
     ).run();
 
     const productId = result.meta.last_row_id as number;
@@ -1278,7 +1287,8 @@ admin.put('/products/:id', authMiddleware, async (c) => {
     // Update product - use current schema including rule_id and download_url
     await db.db.prepare(`
       UPDATE products 
-      SET name = ?, version = ?, description = ?, download_url = ?, rule_id = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, version = ?, description = ?, download_url = ?, rule_id = ?, 
+          price = ?, currency = ?, category = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
       validation.data.name,
@@ -1286,6 +1296,10 @@ admin.put('/products/:id', authMiddleware, async (c) => {
       validation.data.description || null,
       validation.data.download_url,
       validation.data.rule_id,
+      validation.data.price || 0.00,
+      validation.data.currency || 'USD',
+      validation.data.category || null,
+      validation.data.tags || null,
       productId
     ).run();
 
