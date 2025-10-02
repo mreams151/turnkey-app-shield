@@ -2704,18 +2704,22 @@ class AdminPanel {
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                            <input type="text" id="product-category"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., Business Software, Games, Utilities">
+                            <select id="product-category"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Select a category...</option>
+                                <option value="Business Software">Business Software</option>
+                                <option value="Developer Tools">Developer Tools</option>
+                                <option value="Security & Antivirus">Security & Antivirus</option>
+                                <option value="Games & Entertainment">Games & Entertainment</option>
+                                <option value="Productivity & Office">Productivity & Office</option>
+                                <option value="Graphics & Design">Graphics & Design</option>
+                                <option value="System Utilities">System Utilities</option>
+                                <option value="Education & Reference">Education & Reference</option>
+                                <option value="Multimedia">Multimedia</option>
+                                <option value="Communication">Communication</option>
+                                <option value="Other">Other</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
-                        <input type="text" id="product-tags"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="tag1, tag2, tag3 (comma-separated)">
-                        <p class="text-sm text-gray-500 mt-1">Add tags to help categorize and search for this product</p>
                     </div>
 
                     <div>
@@ -2786,8 +2790,7 @@ class AdminPanel {
         const selectedRuleId = document.getElementById('product-rules').value;
         const price = parseFloat(document.getElementById('product-price').value) || 0.00;
         const currency = document.getElementById('product-currency').value;
-        const category = document.getElementById('product-category').value.trim();
-        const tags = document.getElementById('product-tags').value.trim();
+        const category = document.getElementById('product-category').value;
         const errorDiv = document.getElementById('product-error');
         const saveBtn = document.getElementById('save-product-btn');
 
@@ -2810,8 +2813,7 @@ class AdminPanel {
                 rule_id: parseInt(selectedRuleId),
                 price: price,
                 currency: currency,
-                category: category,
-                tags: tags
+                category: category
             });
 
             if (response.success) {
@@ -3044,20 +3046,22 @@ class AdminPanel {
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                            <input type="text" id="edit-product-category"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., Business Software, Games, Utilities"
-                                value="${product.category || ''}">
+                            <select id="edit-product-category"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="" ${!(product.category || '') ? 'selected' : ''}>Select a category...</option>
+                                <option value="Business Software" ${(product.category || '') === 'Business Software' ? 'selected' : ''}>Business Software</option>
+                                <option value="Developer Tools" ${(product.category || '') === 'Developer Tools' ? 'selected' : ''}>Developer Tools</option>
+                                <option value="Security & Antivirus" ${(product.category || '') === 'Security & Antivirus' ? 'selected' : ''}>Security & Antivirus</option>
+                                <option value="Games & Entertainment" ${(product.category || '') === 'Games & Entertainment' ? 'selected' : ''}>Games & Entertainment</option>
+                                <option value="Productivity & Office" ${(product.category || '') === 'Productivity & Office' ? 'selected' : ''}>Productivity & Office</option>
+                                <option value="Graphics & Design" ${(product.category || '') === 'Graphics & Design' ? 'selected' : ''}>Graphics & Design</option>
+                                <option value="System Utilities" ${(product.category || '') === 'System Utilities' ? 'selected' : ''}>System Utilities</option>
+                                <option value="Education & Reference" ${(product.category || '') === 'Education & Reference' ? 'selected' : ''}>Education & Reference</option>
+                                <option value="Multimedia" ${(product.category || '') === 'Multimedia' ? 'selected' : ''}>Multimedia</option>
+                                <option value="Communication" ${(product.category || '') === 'Communication' ? 'selected' : ''}>Communication</option>
+                                <option value="Other" ${(product.category || '') === 'Other' ? 'selected' : ''}>Other</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
-                        <input type="text" id="edit-product-tags"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Comma-separated tags (e.g., Windows, Professional, Enterprise)"
-                            value="${product.tags || ''}">
-                        <p class="text-sm text-gray-500 mt-1">Use commas to separate multiple tags</p>
                     </div>
 
                     <div id="edit-product-error" class="hidden text-red-600 text-sm"></div>
@@ -3122,8 +3126,7 @@ class AdminPanel {
         const selectedRuleId = document.getElementById('edit-product-rules').value;
         const price = parseFloat(document.getElementById('edit-product-price').value) || 0.00;
         const currency = document.getElementById('edit-product-currency').value;
-        const category = document.getElementById('edit-product-category').value.trim();
-        const tags = document.getElementById('edit-product-tags').value.trim();
+        const category = document.getElementById('edit-product-category').value;
         const errorDiv = document.getElementById('edit-product-error');
         const saveBtn = document.getElementById('save-edit-product-btn');
 
@@ -3146,8 +3149,7 @@ class AdminPanel {
                 rule_id: parseInt(selectedRuleId),
                 price: price,
                 currency: currency,
-                category: category,
-                tags: tags
+                category: category
             });
 
             if (response.success) {
