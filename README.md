@@ -13,11 +13,12 @@
 - **API Documentation**: https://3000-it2rdgg0o5rcpwefy6juh-6532622b.e2b.dev/api/info
 - **Health Check**: https://3000-it2rdgg0o5rcpwefy6juh-6532622b.e2b.dev/api/health
 
-### **🔥 LATEST UPDATE - Product Form Fields Fixed (2025-10-02)**:
-✅ **Product Fields Issue RESOLVED**: Added missing form fields (price, currency, category, tags) to product creation and editing forms
-✅ **Backend Integration**: Updated product schema validation and database queries to handle new fields
-✅ **Frontend Forms**: Added comprehensive form fields with proper validation and pre-populated values for editing
-✅ **Database Alignment**: Form fields now match database schema - no more phantom columns in exports
+### **🚀 LATEST UPDATES - Enhanced Product Forms (2025-10-02)**:
+✅ **Product Fields Issue RESOLVED**: Added missing form fields (price, currency, category) to product creation and editing forms
+✅ **UX Improvements**: Removed tags field for cleaner interface, replaced category text input with standardized dropdown
+✅ **Category Standardization**: Added top 10 software categories dropdown (Business Software, Developer Tools, Security & Antivirus, etc.)
+✅ **Backend Integration**: Updated product schema validation and database queries to handle optimized field structure
+✅ **Database Alignment**: Form fields perfectly match database schema - clean exports with consistent data
 
 ### **🎉 PREVIOUS FIXES - ALL ISSUES COMPLETELY RESOLVED (2025-09-28)**:
 ✅ **Dashboard Loading**: FIXED - Resolved JavaScript variable conflicts AND API routing issues
