@@ -6530,6 +6530,25 @@ This action cannot be undone.`;
         this.loadLogs();
     }
 
+    getActionDescription(action) {
+        const actionMap = {
+            'login': 'Admin Login',
+            'logout': 'Admin Logout',
+            'create_customer': 'Create Customer',
+            'update_customer': 'Update Customer',
+            'suspend_customer': 'Suspend Customer',
+            'revoke_license': 'Revoke License',
+            'create_product': 'Create Product',
+            'update_product': 'Update Product',
+            'delete_product': 'Delete Product',
+            'backup_create': 'Create Backup',
+            'backup_restore': 'Restore Backup',
+            'export_data': 'Export Data',
+            'system_maintenance': 'System Maintenance'
+        };
+        return actionMap[action] || action || 'Unknown Action';
+    }
+
     async loadLogs() {
         try {
             const actionType = document.getElementById('log-filter-type')?.value || '';
@@ -6563,11 +6582,11 @@ This action cannot be undone.`;
                                 <div class="flex items-center space-x-3">
                                     <i class="fas ${iconClass} ${statusClass}"></i>
                                     <div>
-                                        <h4 class="font-medium text-gray-900">${log.action_description}</h4>
+                                        <h4 class="font-medium text-gray-900">${this.getActionDescription(log.action)}</h4>
                                         <div class="flex items-center space-x-4 text-sm text-gray-600 mt-1">
                                             <span><i class="fas fa-user mr-1"></i>${log.admin_username || 'Unknown'}</span>
                                             <span><i class="fas fa-clock mr-1"></i>${new Date(log.created_at).toLocaleString()}</span>
-                                            <span><i class="fas fa-tag mr-1"></i>${log.action_category}</span>
+                                            <span><i class="fas fa-tag mr-1"></i>${log.entity_type || 'system'}</span>
                                             ${log.ip_address ? `<span><i class="fas fa-globe mr-1"></i>${log.ip_address}</span>` : ''}
                                         </div>
                                         ${log.error_message ? `<p class="text-red-600 text-sm mt-1">${log.error_message}</p>` : ''}
