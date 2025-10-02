@@ -4962,6 +4962,7 @@ admin.post('/login-2fa', async (c) => {
     
     // Generate JWT token
     const token = await signJWT({
+      type: 'admin',
       userId: user.id,
       username: user.username,
       role: user.role
