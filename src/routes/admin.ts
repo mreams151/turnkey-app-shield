@@ -2672,8 +2672,8 @@ admin.get('/export-direct/:entity', authMiddleware, async (c) => {
       const db = new DatabaseManager(c.env.DB);
       
       const query = `
-        SELECT id, name, version, description, status, license_type,
-               price, max_installations, created_at, updated_at
+        SELECT id, name, version, description, status, category,
+               price, currency, created_at, updated_at
         FROM products
         ORDER BY created_at DESC
       `;
@@ -2682,14 +2682,14 @@ admin.get('/export-direct/:entity', authMiddleware, async (c) => {
       const products = result.results || [];
       
       if (products.length === 0) {
-        return c.text('id,name,version,description,status,license_type,price,max_installations,created_at,updated_at\n', 200, {
+        return c.text('id,name,version,description,status,category,price,currency,created_at,updated_at\n', 200, {
           'Content-Type': 'text/csv',
           'Content-Disposition': 'attachment; filename="products_empty.csv"'
         });
       }
 
       // Create CSV
-      const headers = ['id', 'name', 'version', 'description', 'status', 'license_type', 'price', 'max_installations', 'created_at', 'updated_at'];
+      const headers = ['id', 'name', 'version', 'description', 'status', 'category', 'price', 'currency', 'created_at', 'updated_at'];
       let csv = headers.join(',') + '\n';
       
       for (const product of products) {
