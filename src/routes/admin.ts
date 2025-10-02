@@ -2267,7 +2267,7 @@ admin.get('/logs/actions', authMiddleware, async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1');
     const limit = parseInt(c.req.query('limit') || '50');
-    const action = c.req.query('action') || '';
+    const action = c.req.query('action_type') || '';
     const entity = c.req.query('entity') || '';
     const username = c.req.query('username') || '';
     

@@ -6503,12 +6503,11 @@ This action cannot be undone.`;
                             <div class="flex space-x-3">
                                 <select id="log-filter-type" class="px-3 py-2 border border-gray-300 rounded-md text-sm">
                                     <option value="">All Actions</option>
+                                    <option value="login">Admin Login</option>
                                     <option value="create_customer">Create Customer</option>
                                     <option value="create_product">Create Product</option>
-                                    <option value="create_license">Create License</option>
-                                    <option value="create_backup">Create Backup</option>
-                                    <option value="restore_backup">Restore Backup</option>
-                                    <option value="bulk_create_licenses">Bulk Create Licenses</option>
+                                    <option value="backup_create">Create Backup</option>
+                                    <option value="backup_restore">Restore Backup</option>
                                     <option value="export_data">Export Data</option>
                                 </select>
                                 <button onclick="adminPanel.loadLogs()" class="px-3 py-2 bg-brand-blue text-white rounded-md text-sm">
