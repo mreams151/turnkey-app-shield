@@ -2667,8 +2667,49 @@ admin.get('/export-direct/:entity', authMiddleware, async (c) => {
       });
     }
     
+    if (entity === 'products') {
+      // Handle products export
+      const db = new DatabaseManager(c.env.DB);
+      
+      const query = `
+        SELECT id, name, version, description, status, license_type,
+               price, max_installations, created_at, updated_at
+        FROM products
+        ORDER BY created_at DESC
+      `;
+      
+      const result = await db.db.prepare(query).all();
+      const products = result.results || [];
+      
+      if (products.length === 0) {
+        return c.text('id,name,version,description,status,license_type,price,max_installations,created_at,updated_at\n', 200, {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': 'attachment; filename="products_empty.csv"'
+        });
+      }
+
+      // Create CSV
+      const headers = ['id', 'name', 'version', 'description', 'status', 'license_type', 'price', 'max_installations', 'created_at', 'updated_at'];
+      let csv = headers.join(',') + '\n';
+      
+      for (const product of products) {
+        const values = headers.map(header => {
+          const value = product[header] || '';
+          return typeof value === 'string' && value.includes(',') ? `"${value.replace(/"/g, '""')}"` : value;
+        });
+        csv += values.join(',') + '\n';
+      }
+
+      const filename = `products_export_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      return c.text(csv, 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="${filename}"`
+      });
+    }
+    
     if (entity !== 'security_events') {
-      return c.json({ success: false, message: 'Only security_events and customers supported' }, 400);
+      return c.json({ success: false, message: 'Only security_events, customers, and products supported' }, 400);
     }
 
     const db = new DatabaseManager(c.env.DB);

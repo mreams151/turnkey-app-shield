@@ -404,11 +404,7 @@ class AdminPanel {
                                 data-page="logs">
                                 <i class="fas fa-clipboard-list mr-3"></i>Admin Logs
                             </button>
-                            <button onclick="adminPanel.showPage('exports')" 
-                                class="nav-item w-full flex items-center px-4 py-2 text-left text-gray-600 hover:bg-gray-100 rounded-lg"
-                                data-page="exports">
-                                <i class="fas fa-download mr-3"></i>Data Export
-                            </button>
+
                             <button onclick="adminPanel.showPage('settings')" 
                                 class="nav-item w-full flex items-center px-4 py-2 text-left text-gray-600 hover:bg-gray-100 rounded-lg"
                                 data-page="settings">
@@ -465,9 +461,7 @@ class AdminPanel {
             case 'logs':
                 this.showLogs();
                 break;
-            case 'exports':
-                this.showExports();
-                break;
+
             case 'settings':
                 this.showSettings();
                 break;
@@ -1821,6 +1815,47 @@ class AdminPanel {
         }
     }
 
+    // Export products to Excel
+    async exportProducts() {
+        try {
+            this.showNotification('Preparing CSV export...', 'info');
+            
+            // Use fetch with authorization headers to download the CSV
+            const response = await fetch(`${this.apiBaseUrl}/admin/export-direct/products`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Accept': 'text/csv'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.status}`);
+            }
+
+            // Get the CSV content as a blob
+            const blob = await response.blob();
+            
+            // Create download link with blob URL
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `products_export_${new Date().toISOString().split('T')[0]}.csv`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Clean up the blob URL
+            window.URL.revokeObjectURL(url);
+            
+            this.showNotification('Products export downloaded successfully', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showError('Failed to export products: ' + error.message);
+        }
+    }
+
     // View customer details (like your old system's details page)
     async viewCustomerDetails(customerId) {
         try {
@@ -2462,9 +2497,14 @@ class AdminPanel {
                         <h1 class="text-3xl font-bold text-gray-900">Products</h1>
                         <p class="text-gray-600 mt-2">Manage your software products</p>
                     </div>
-                    <button onclick="adminPanel.showAddProduct()" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>Add Product
-                    </button>
+                    <div class="flex space-x-3">
+                        <button onclick="adminPanel.exportProducts()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                            <i class="fas fa-file-excel mr-2"></i>Export Excel
+                        </button>
+                        <button onclick="adminPanel.showAddProduct()" class="bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                            <i class="fas fa-plus mr-2"></i>Add Product
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -6478,148 +6518,7 @@ This action cannot be undone.`;
         this.showNotification('Log details feature coming soon', 'info');
     }
 
-    // Data Export
-    async showExports() {
-        const content = document.getElementById('main-content');
-        content.innerHTML = `
-            <div class="space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Export Customers -->
-                    <div class="bg-white shadow rounded-lg">
-                        <div class="px-4 py-5 sm:p-6">
-                            <div class="flex items-center">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-users text-2xl text-blue-500"></i>
-                                </div>
-                                <div class="ml-5 w-0 flex-1">
-                                    <dl>
-                                        <dt class="text-sm font-medium text-gray-500 truncate">Customers</dt>
-                                        <dd class="text-lg font-medium text-gray-900">Export customer data</dd>
-                                    </dl>
-                                </div>
-                            </div>
-                            <div class="mt-5 flex justify-between">
-                                <button onclick="adminPanel.exportData('customers', 'csv')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                                    <i class="fas fa-file-csv mr-2"></i>CSV
-                                </button>
-                                <button onclick="adminPanel.exportData('customers', 'json')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                                    <i class="fas fa-file-code mr-2"></i>JSON
-                                </button>
-                            </div>
 
-                        </div>
-                    </div>
-
-                    <!-- Export Products -->
-                    <div class="bg-white shadow rounded-lg">
-                        <div class="px-4 py-5 sm:p-6">
-                            <div class="flex items-center">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-box text-2xl text-purple-500"></i>
-                                </div>
-                                <div class="ml-5 w-0 flex-1">
-                                    <dl>
-                                        <dt class="text-sm font-medium text-gray-500 truncate">Products</dt>
-                                        <dd class="text-lg font-medium text-gray-900">Export product data</dd>
-                                    </dl>
-                                </div>
-                            </div>
-                            <div class="mt-5 flex justify-between">
-                                <button onclick="adminPanel.exportData('products', 'csv')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                                    <i class="fas fa-file-csv mr-2"></i>CSV
-                                </button>
-                                <button onclick="adminPanel.exportData('products', 'json')" 
-                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                                    <i class="fas fa-file-code mr-2"></i>JSON
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-
-                </div>
-
-
-            </div>
-        `;
-    }
-
-    async exportData(entity, format) {
-        try {
-            // Check if token exists before attempting export
-            if (!this.token) {
-                this.showNotification('Not authenticated. Please login again.', 'error');
-                this.logout();
-                return;
-            }
-
-            const exportName = `${entity}_export_${new Date().toISOString().split('T')[0]}`;
-            
-            const response = await this.apiCall(`/admin/export/${entity}`, 'POST', {
-                format,
-                export_name: exportName,
-                filters: {},
-                columns: [] // Empty means all columns
-            });
-
-            if (response.success) {
-                this.showNotification(`Export started. Preparing ${response.record_count} records...`, 'success');
-                
-                // Download the file using authenticated request
-                setTimeout(async () => {
-                    try {
-                        const downloadResponse = await axios({
-                            method: 'GET',
-                            url: `${this.apiBaseUrl}/admin/export/${response.export_id}/download`,
-                            headers: {
-                                'Authorization': `Bearer ${this.token}`
-                            },
-                            responseType: 'blob'
-                        });
-                        
-                        // Create download link
-                        const blob = new Blob([downloadResponse.data]);
-                        const url = window.URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = `${entity}_export_${format}.${format === 'csv' ? 'csv' : 'json'}`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        window.URL.revokeObjectURL(url);
-                        
-                    } catch (downloadError) {
-                        console.error('Download failed:', downloadError);
-                        this.showNotification('Export created but download failed. Please try again.', 'warning');
-                    }
-                }, 1000);
-            } else {
-                throw new Error(response.message || 'Export failed');
-            }
-
-        } catch (error) {
-            console.error('Export failed:', error);
-            console.error('Full error object:', {
-                message: error.message,
-                response: error.response,
-                status: error.response?.status,
-                data: error.response?.data
-            });
-            
-            // Show more specific error messages
-            if (error.response?.status === 401) {
-                this.showNotification('Authentication failed. Please login again.', 'error');
-                this.logout();
-            } else if (error.response?.data?.error) {
-                this.showNotification('Export failed: ' + error.response.data.error, 'error');
-            } else {
-                this.showNotification('Export failed: ' + error.message, 'error');
-            }
-        }
-    }
 
     showBulkCreateModal() {
         const modal = document.createElement('div');
