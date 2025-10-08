@@ -7,20 +7,26 @@
 - **Status**: ✅ Active Development Build
 
 ## URLs
-- **Production**: https://db5f754d.turnkey-app-shield.pages.dev
-- **Admin Panel**: https://db5f754d.turnkey-app-shield.pages.dev/admin  
-- **Customer Portal**: https://db5f754d.turnkey-app-shield.pages.dev/portal
+- **Production**: https://774f13bc.turnkey-app-shield.pages.dev
+- **Admin Panel**: https://774f13bc.turnkey-app-shield.pages.dev/admin  
+- **Customer Portal**: https://774f13bc.turnkey-app-shield.pages.dev/portal
 - **GitHub Repository**: https://github.com/mreams151/turnkey-app-shield
-- **API Documentation**: https://db5f754d.turnkey-app-shield.pages.dev/api/info
-- **Health Check**: https://db5f754d.turnkey-app-shield.pages.dev/api/health
+- **API Documentation**: https://774f13bc.turnkey-app-shield.pages.dev/api/info
+- **Health Check**: https://774f13bc.turnkey-app-shield.pages.dev/api/health
 
-### **🎉 PRODUCTION HOTFIX - Critical Database Issue Resolved (2025-10-08)**:
+### **🔥 BACKUP UPLOAD ENHANCEMENT - User Experience Improved (2025-10-08)**:
+✅ **BACKUP UPLOAD FULLY FUNCTIONAL**: Added missing /admin/backups/upload API endpoint - upload failures completely resolved
+✅ **NON-DESTRUCTIVE UPLOAD OPTION**: Added "Upload only (safe)" mode - stores backup files without affecting current data
+✅ **DESTRUCTIVE RESTORE OPTION**: "Upload and restore" mode for complete data restoration when needed
+✅ **IMPROVED USER INTERFACE**: Radio button selection with dynamic help text and clear mode distinction
+✅ **NEW PRODUCTION URL**: https://774f13bc.turnkey-app-shield.pages.dev (latest deployment with upload fixes)
+✅ **VERIFIED FUNCTIONALITY**: Both upload modes tested and working - upload-only and upload-restore confirmed operational
+✅ **GITHUB SYNCHRONIZED**: Latest fixes pushed to https://github.com/mreams151/turnkey-app-shield
+
+### **🎉 PREVIOUS HOTFIX - Critical Database Issue Resolved (2025-10-08)**:
 ✅ **DATABASE INITIALIZATION FIXED**: Modified DatabaseInitializer to create missing backup tables in production
 ✅ **BACKUP SYSTEM FULLY OPERATIONAL**: "Failed to load backups" error completely resolved - all functions working
 ✅ **ADMIN LOGS WORKING**: Admin action logging system fully operational with proper table structure
-✅ **NEW PRODUCTION URL**: https://db5f754d.turnkey-app-shield.pages.dev (latest deployment with hotfix)
-✅ **VERIFIED FUNCTIONALITY**: Created test backup successfully - backup list, download, upload all confirmed working
-✅ **GITHUB SYNCHRONIZED**: Latest fixes pushed to https://github.com/mreams151/turnkey-app-shield
 
 ### **🚀 PREVIOUS DEPLOYMENT - All Critical Issues Fixed (2025-10-08)**:
 ✅ **CRITICAL FIXES DEPLOYED**: Customer status badge colors (green/yellow/red), customer tab freezing resolved
@@ -185,7 +191,7 @@ curl http://localhost:3000/api/init
 ### Admin Access: ✅ FULLY OPERATIONAL
 - **Email**: `admin@example.com` (MUST use full email, not just "admin")
 - **Password**: `admin123`
-- **URL**: https://db5f754d.turnkey-app-shield.pages.dev/admin
+- **URL**: https://774f13bc.turnkey-app-shield.pages.dev/admin
 - **Status**: ✅ Login working, Dashboard loading, All functionality operational
 - **Features**: Dashboard, customers, licenses, security events, uploads all working perfectly ✅
 
@@ -315,7 +321,7 @@ const result = await response.json();
 
 - **Platform**: Cloudflare Pages/Workers  
 - **Environment**: Production (Live Deployment)
-- **Production URL**: https://db5f754d.turnkey-app-shield.pages.dev
+- **Production URL**: https://774f13bc.turnkey-app-shield.pages.dev
 - **GitHub Repository**: https://github.com/mreams151/turnkey-app-shield
 - **Status**: ✅ Live and Fully Operational
 - **Performance**: Sub-100ms response times (Global Edge Network)
