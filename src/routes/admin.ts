@@ -374,7 +374,7 @@ admin.post('/debug/test-export', authMiddleware, async (c) => {
   });
 });
 
-// Legacy auth route for frontend compatibility
+// Legacy auth route for frontend compatibility  
 admin.post('/auth', async (c) => {
   try {
     const body = await c.req.json();
@@ -1066,12 +1066,21 @@ admin.delete('/customers/:id', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // Soft delete - set status to revoked to preserve audit trail
-    await db.db.prepare(`
-      UPDATE customers 
-      SET status = 'revoked'
-      WHERE id = ?
-    `).bind(customerId).run();
+    // Check if customer is already revoked - if so, do hard delete
+    // Otherwise, soft delete by setting status to revoked
+    if (existingCustomer.status === 'revoked') {
+      // Hard delete for already revoked customers
+      await db.db.prepare(`
+        DELETE FROM customers WHERE id = ?
+      `).bind(customerId).run();
+    } else {
+      // Soft delete - set status to revoked to preserve audit trail
+      await db.db.prepare(`
+        UPDATE customers 
+        SET status = 'revoked'
+        WHERE id = ?
+      `).bind(customerId).run();
+    }
 
     return c.json({
       success: true,
@@ -1933,34 +1942,71 @@ admin.post('/maintenance/cleanup', authMiddleware, async (c) => {
  */
 admin.get('/backups', authMiddleware, async (c) => {
   try {
+    console.log('Loading actual backup records from database');
+    
     const db = new DatabaseManager(c.env.DB);
     
-    // Get all backups with basic info (without backup_data for performance)
-    const backups = await db.db.prepare(`
-      SELECT id, backup_name, original_size, file_size, table_count,
-             tables_included, record_counts, description, created_by,
-             created_at, updated_at, status
-      FROM database_backups
+    // Query actual backup records from database_backups table
+    const result = await db.db.prepare(`
+      SELECT id, backup_name, original_size, file_size, table_count, 
+             tables_included, record_counts, created_by, created_at, status
+      FROM database_backups 
       ORDER BY created_at DESC
     `).all();
     
-    // Transform backup data for frontend
-    const transformedBackups = (backups.results || []).map(backup => ({
-      ...backup,
+    const backups = (result.results || []).map(backup => ({
+      id: backup.id,
+      backup_name: backup.backup_name,
+      original_size: backup.original_size || 0,
+      file_size: backup.file_size || 0,
+      table_count: backup.table_count || 0,
       tables_included: backup.tables_included ? JSON.parse(backup.tables_included) : [],
       record_counts: backup.record_counts ? JSON.parse(backup.record_counts) : {},
-      size_mb: Math.round((backup.file_size || 0) / 1024 / 1024 * 100) / 100,
-      created_at_formatted: new Date(backup.created_at).toLocaleString()
+      created_by: backup.created_by,
+      created_at: backup.created_at,
+      status: backup.status || 'completed'
     }));
+    
+    console.log(`Found ${backups.length} backup records`);
     
     return c.json({
       success: true,
-      backups: transformedBackups
+      backups: backups
     });
-
+    
   } catch (error) {
-    console.error('Get backups error:', error);
-    return c.json({ error: 'Failed to fetch backups' }, 500);
+    console.error('Failed to load backups:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to load backups',
+      error: error.message
+    }, 500);
+  }
+});
+
+// Simplified backup endpoint for testing
+admin.get('/backups/simple', authMiddleware, async (c) => {
+  try {
+    console.log('Simple backup endpoint called');
+    
+    const simpleResponse = {
+      success: true,
+      message: "Simple backup endpoint working",
+      count: 3,
+      data: [
+        { id: 1, name: "backup1", status: "completed" },
+        { id: 2, name: "backup2", status: "completed" },
+        { id: 3, name: "backup3", status: "completed" }
+      ]
+    };
+    
+    console.log('Simple backup response:', JSON.stringify(simpleResponse));
+    
+    return c.json(simpleResponse);
+    
+  } catch (error) {
+    console.error('Simple backup error:', error);
+    return c.json({ success: false, message: 'Simple backup failed' }, 500);
   }
 });
 

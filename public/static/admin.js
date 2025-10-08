@@ -11,6 +11,13 @@ class AdminPanel {
         this.dashboardRendered = false; // Fix for infinite scroll issue
         this.uploads = []; // Initialize uploads array
         
+        // Debug logging for URL issues
+        console.log('AdminPanel initialized with:');
+        console.log('- window.location.origin:', window.location.origin);
+        console.log('- window.location.protocol:', window.location.protocol);
+        console.log('- window.location.host:', window.location.host);
+        console.log('- this.apiBaseUrl:', this.apiBaseUrl);
+        
         this.init();
     }
 
@@ -180,12 +187,15 @@ class AdminPanel {
                 loginData.backup_code = backupCode;
             }
             
-            const response = await axios.post(`${this.apiBaseUrl}/admin/login-2fa`, loginData);
+            const response = await axios.post(`${this.apiBaseUrl}/admin/auth/login`, loginData);
 
             if (response.data.success) {
                 this.token = response.data.token;
-                this.currentUser = response.data.user;
+                this.currentUser = response.data.admin || response.data.user; // Handle both response formats
                 localStorage.setItem('admin_token', this.token);
+                
+                console.log('Login successful, token saved:', !!this.token);
+                console.log('Current user:', this.currentUser?.username);
                 
                 await this.loadDashboard();
             } else if (response.data.requires_2fa) {
@@ -199,7 +209,7 @@ class AdminPanel {
             // If 2FA endpoint fails, try fallback to original auth endpoint
             if (error.response?.status === 404 && !totpCode && !backupCode) {
                 try {
-                    const fallbackResponse = await axios.post(`${this.apiBaseUrl}/admin/auth`, {
+                    const fallbackResponse = await axios.post(`${this.apiBaseUrl}/admin/auth/login`, {
                         username: username,
                         password: password
                     });
@@ -661,24 +671,33 @@ class AdminPanel {
     }
 
     async showCustomers() {
-        console.log('DEBUG: showCustomers() - LOADING REAL CUSTOMER DATA');
+        console.log('DEBUG: showCustomers() - Starting customer load process');
         
         try {
+            // Prevent multiple concurrent calls
+            if (this.loadingCustomers) {
+                console.log('DEBUG: Already loading customers, skipping duplicate call');
+                return;
+            }
+            this.loadingCustomers = true;
+            
             const content = document.getElementById('main-content');
             if (!content) {
                 console.error('DEBUG: main-content not found!');
+                this.loadingCustomers = false;
                 return;
             }
             
-            // Create the proper DOM structure that renderCustomersTable expects
+            // Create the proper DOM structure with improved loading state
             content.innerHTML = `
                 <div class="p-8">
                     <h2 class="text-xl font-semibold mb-4">Customers</h2>
                     <div id="customers-content">
-                        <div class="text-center py-8">
+                        <div class="text-center py-12">
                             <div class="animate-pulse">
                                 <div class="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                 <p class="mt-4 text-gray-600">Loading customers...</p>
+                                <p class="mt-2 text-sm text-gray-500">Please wait while we fetch your data</p>
                             </div>
                         </div>
                     </div>
@@ -686,45 +705,77 @@ class AdminPanel {
             `;
             
             console.log('DEBUG: Making API call for customers...');
-            // Load customers with a simple API call
-            const response = await this.apiCall('/admin/customers?limit=50');
+            
+            // Add timeout to prevent hanging
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Request timed out after 30 seconds')), 30000)
+            );
+            
+            const apiPromise = this.apiCall('/admin/customers?limit=50');
+            
+            const response = await Promise.race([apiPromise, timeoutPromise]);
             
             if (response.success) {
                 console.log('DEBUG: Received customer data:', response.customers?.length || 0, 'customers');
                 
-                this.renderCustomersTable(response.customers || []);
+                // Use requestAnimationFrame to prevent UI blocking
+                requestAnimationFrame(() => {
+                    try {
+                        this.renderCustomersTable(response.customers || []);
+                        
+                        // Load additional data in the background with delays
+                        setTimeout(async () => {
+                            try {
+                                await this.loadProductsForFilter();
+                                
+                                // Apply default active filter with another delay
+                                setTimeout(() => {
+                                    try {
+                                        this.filterCustomers();
+                                    } catch (error) {
+                                        console.error('Error in filterCustomers:', error);
+                                    }
+                                }, 200);
+                                
+                            } catch (error) {
+                                console.error('Error in loadProductsForFilter:', error);
+                            }
+                        }, 300);
+                        
+                    } catch (error) {
+                        console.error('Error in renderCustomersTable:', error);
+                        this.showCustomersError('Error rendering customer data');
+                    }
+                });
                 
-                // Load products for the filter dropdown AND apply default active filter AFTER DOM is rendered
-                setTimeout(async () => {
-                    await this.loadProductsForFilter();
-                    
-                    // Apply default active filter after everything is loaded
-                    this.filterCustomers();
-                }, 100);
             } else {
                 console.log('DEBUG: API call failed:', response.message);
-                const customersContent = document.getElementById('customers-content');
-                if (customersContent) {
-                    customersContent.innerHTML = `
-                        <div class="text-center py-8">
-                            <h3 class="text-lg font-semibold text-red-600 mb-2">Failed to load customers</h3>
-                            <p class="text-gray-600">${response.message || 'Unknown error'}</p>
-                        </div>
-                    `;
-                }
+                this.showCustomersError(response.message || 'Failed to load customers');
             }
             
         } catch (error) {
             console.error('DEBUG: Error in showCustomers:', error);
-            const customersContent = document.getElementById('customers-content');
-            if (customersContent) {
-                customersContent.innerHTML = `
-                    <div class="text-center py-8">
-                        <h3 class="text-lg font-semibold text-red-600 mb-2">Error loading customers</h3>
-                        <p class="text-gray-600">${error.message}</p>
-                    </div>
-                `;
-            }
+            this.showCustomersError(error.message || 'Unknown error occurred');
+        } finally {
+            // Always reset loading flag
+            this.loadingCustomers = false;
+        }
+    }
+    
+    showCustomersError(message) {
+        const customersContent = document.getElementById('customers-content');
+        if (customersContent) {
+            customersContent.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-exclamation-triangle text-4xl text-red-400 mb-4"></i>
+                    <h3 class="text-lg font-semibold text-red-600 mb-2">Unable to Load Customers</h3>
+                    <p class="text-gray-600 mb-4">${message}</p>
+                    <button onclick="adminPanel.showCustomers()" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        Try Again
+                    </button>
+                </div>
+            `;
         }
     }
 
@@ -974,7 +1025,7 @@ class AdminPanel {
             </div>
             
             <!-- Bulk Actions Bar (hidden by default) -->
-            <div id="bulk-actions-bar" class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between" style="display: none;">
+            <div id="bulk-actions-bar" class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md items-center justify-between hidden">
                 <div class="flex items-center">
                     <span id="selection-count" class="text-sm font-medium text-blue-800">0 customers selected</span>
                 </div>
@@ -1129,10 +1180,31 @@ class AdminPanel {
         // Show/hide bulk action bar
         if (bulkActionBar) {
             if (selectedCount > 0) {
-                bulkActionBar.style.display = 'flex';
+                bulkActionBar.classList.remove('hidden');
+                bulkActionBar.classList.add('flex');
+                console.log('DEBUG: Showing bulk actions bar for', selectedCount, 'selected items');
             } else {
-                bulkActionBar.style.display = 'none';
+                bulkActionBar.classList.add('hidden');
+                bulkActionBar.classList.remove('flex');
             }
+        } else {
+            console.log('DEBUG: Bulk actions bar element not found');
+        }
+    }
+
+    // DEBUG: Function to manually show bulk actions bar for testing
+    debugShowBulkActions() {
+        const bulkActionBar = document.getElementById('bulk-actions-bar');
+        const selectionCount = document.getElementById('selection-count');
+        if (bulkActionBar) {
+            bulkActionBar.classList.remove('hidden');
+            bulkActionBar.classList.add('flex');
+            if (selectionCount) {
+                selectionCount.textContent = 'DEBUG: Manual test';
+            }
+            console.log('DEBUG: Manually showing bulk actions bar');
+        } else {
+            console.log('DEBUG: Could not find bulk actions bar');
         }
     }
 
@@ -1162,61 +1234,7 @@ class AdminPanel {
         }));
     }
 
-    // Bulk delete selected customers
-    async bulkDeleteCustomers() {
-        const selectedCustomers = this.getSelectedCustomers();
-        
-        if (selectedCustomers.length === 0) {
-            this.showNotification('No customers selected', 'warning');
-            return;
-        }
-
-        const customerNames = selectedCustomers.map(c => c.name).join(', ');
-        const confirmMessage = `Are you sure you want to delete ${selectedCustomers.length} customer${selectedCustomers.length !== 1 ? 's' : ''}?\n\nSelected customers:\n${customerNames}`;
-        
-        if (!confirm(confirmMessage)) {
-            return;
-        }
-
-        try {
-            this.showNotification('Deleting customers...', 'info');
-            
-            // Delete customers one by one
-            let successCount = 0;
-            let failCount = 0;
-            
-            for (const customer of selectedCustomers) {
-                try {
-                    const response = await this.apiCall(`/admin/customers/${customer.id}`, 'DELETE');
-                    if (response.success) {
-                        successCount++;
-                    } else {
-                        failCount++;
-                        console.error(`Failed to delete customer ${customer.name}:`, response.error);
-                    }
-                } catch (error) {
-                    failCount++;
-                    console.error(`Failed to delete customer ${customer.name}:`, error);
-                }
-            }
-            
-            // Show results
-            if (successCount > 0 && failCount === 0) {
-                this.showNotification(`Successfully deleted ${successCount} customer${successCount !== 1 ? 's' : ''}`, 'success');
-            } else if (successCount > 0 && failCount > 0) {
-                this.showNotification(`Deleted ${successCount} customers, failed to delete ${failCount}`, 'warning');
-            } else {
-                this.showNotification(`Failed to delete all ${failCount} customers`, 'error');
-            }
-            
-            // Reload customers list
-            await this.loadCustomers();
-            
-        } catch (error) {
-            console.error('Bulk delete error:', error);
-            this.showNotification('Failed to delete customers', 'error');
-        }
-    }
+    // First duplicate bulkDeleteCustomers function removed (keeping the more complete one below)
 
     // Enhanced customer search functionality
     handleSearchInput(searchTerm) {
@@ -1411,17 +1429,17 @@ class AdminPanel {
                     const productName = customer.product_name || 'Unknown Product';
                     const status = customer.status || 'unknown';
                     
-                    // Simple inline status badge (avoiding method call in template)
-                    let statusClass = 'bg-gray-100 text-gray-800';
+                    // Use inline styles for status badge to ensure colors display correctly
+                    let statusStyle = 'background-color: #f3f4f6; color: #374151; border: 1px solid #d1d5db;';
                     if (status === 'active') {
-                        statusClass = 'bg-green-100 text-green-800 border border-green-200';
+                        statusStyle = 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;';
                     } else if (status === 'suspended') {
-                        statusClass = 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+                        statusStyle = 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;';
                     } else if (status === 'revoked') {
-                        statusClass = 'bg-red-100 text-red-800 border border-red-200';
+                        statusStyle = 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;';
                     }
                     
-                    const statusBadge = `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${status.toUpperCase()}</span>`;
+                    const statusBadge = `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" style="${statusStyle}">${status.toUpperCase()}</span>`;
                     
                     return `<tr class="hover:bg-gray-50">
                         <td class="px-4 py-3">
@@ -1533,7 +1551,11 @@ class AdminPanel {
                             ${customer.license_key || 'N/A'}
                         </td>
                         <td class="px-4 py-3 text-sm">
-                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${customer.status === 'active' ? 'bg-green-100 text-green-800 border border-green-200' : customer.status === 'suspended' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' : customer.status === 'revoked' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-gray-100 text-gray-800'}">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full" 
+                                  style="${customer.status === 'active' ? 'background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;' : 
+                                         customer.status === 'suspended' ? 'background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important;' : 
+                                         customer.status === 'revoked' ? 'background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca !important;' : 
+                                         'background-color: #f3f4f6 !important; color: #374151 !important; border: 1px solid #d1d5db !important;'}">
                                 ${(customer.status || 'N/A').toUpperCase()}
                             </span>
                         </td>
@@ -1638,6 +1660,31 @@ class AdminPanel {
         } catch (e) {
             return dateString;
         }
+    }
+
+    formatFileSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    formatRecordCounts(recordCounts) {
+        if (!recordCounts || typeof recordCounts !== 'object') {
+            return 'N/A';
+        }
+        
+        // Calculate total records
+        const total = Object.values(recordCounts).reduce((sum, count) => sum + (count || 0), 0);
+        
+        // Create detailed breakdown
+        const breakdown = Object.entries(recordCounts)
+            .filter(([table, count]) => count > 0)
+            .map(([table, count]) => `${count} ${table}`)
+            .join(', ');
+            
+        return breakdown || `${total} total`;
     }
 
     // Helper method to get product name
@@ -5438,7 +5485,7 @@ class AdminPanel {
             // If it's an auth error, clear token and redirect to login
             if (error.response?.status === 401) {
                 this.logout();
-                return;
+                throw new Error('Authentication failed - please login again');
             }
             
             // Extract meaningful error message from server response
@@ -5494,11 +5541,18 @@ class AdminPanel {
                             <div>
                                 <h3 class="text-lg leading-6 font-medium text-gray-900">Database Backups</h3>
                                 <p class="mt-1 text-sm text-gray-500">Create and manage database backups</p>
+                                <p class="mt-1 text-xs text-blue-600">💡 JSON = Complete restore capability | Excel = View-only analysis</p>
                             </div>
-                            <button onclick="adminPanel.showCreateBackupModal()" 
-                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue">
-                                <i class="fas fa-plus mr-2"></i>Create Backup
-                            </button>
+                            <div class="flex space-x-3">
+                                <button onclick="adminPanel.showUploadBackupModal()" 
+                                    class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue">
+                                    <i class="fas fa-upload mr-2"></i>Upload Backup
+                                </button>
+                                <button onclick="adminPanel.showCreateBackupModal()" 
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue">
+                                    <i class="fas fa-plus mr-2"></i>Create Backup
+                                </button>
+                            </div>
                         </div>
                         
                         <div id="backups-list" class="space-y-4">
@@ -5517,8 +5571,40 @@ class AdminPanel {
 
     async loadBackups() {
         try {
-            const response = await this.apiCall('/admin/backups');
-            const backups = response.success ? response.backups : [];
+            // Simplified token check - exact same logic as working test
+            if (!this.token) {
+                this.token = localStorage.getItem('admin_token');
+            }
+            
+            if (!this.token) {
+                console.log('No token found, redirecting to login...');
+                this.showLogin();
+                return;
+            }
+            
+            console.log('Loading backups with token:', this.token.substring(0, 20) + '...');
+            
+            // Use exact same request as working test page
+            const response = await axios.get(`${this.apiBaseUrl}/admin/backups`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log('Raw axios response status:', response.status);
+            console.log('Raw axios response data type:', typeof response.data);
+            console.log('Raw axios response data (first 200 chars):', 
+                JSON.stringify(response.data).substring(0, 200) + '...');
+            
+            // Simple response handling - use the data directly 
+            const data = response.data;
+            
+            if (!data || data.success === false) {
+                throw new Error(data?.message || 'Invalid API response format');
+            }
+            
+            const backups = data.backups || [];
 
             const container = document.getElementById('backups-list');
             if (backups.length === 0) {
@@ -5543,8 +5629,8 @@ class AdminPanel {
                                     Created ${new Date(backup.created_at).toLocaleString()} by ${backup.created_by_username || 'Unknown'}
                                 </p>
                                 <p class="text-xs text-gray-500">
-                                    Size: ${(backup.original_size / 1024 / 1024).toFixed(2)} MB | 
-                                    Tables: ${JSON.parse(backup.tables_included || '[]').length} |
+                                    Size: ${this.formatFileSize(backup.file_size || backup.original_size || 0)} | 
+                                    Records: ${this.formatRecordCounts(backup.record_counts)} |
                                     Status: ${backup.status}
                                 </p>
                             </div>
@@ -5552,10 +5638,18 @@ class AdminPanel {
                     </div>
                     <div class="flex items-center space-x-2">
                         ${backup.status === 'completed' ? `
-                            <button onclick="adminPanel.downloadBackup(${backup.id}, '${backup.backup_name}')"
-                                class="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200">
-                                <i class="fas fa-download mr-1"></i>Download
-                            </button>
+                            <div class="flex space-x-1">
+                                <button onclick="adminPanel.downloadBackup(${backup.id}, '${backup.backup_name}', 'json')"
+                                    class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                                    title="Download JSON (for restore/import)">
+                                    <i class="fas fa-download mr-1"></i>JSON
+                                </button>
+                                <button onclick="adminPanel.downloadBackup(${backup.id}, '${backup.backup_name}', 'csv')"
+                                    class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                                    title="Download Excel CSV (view-only for analysis)">
+                                    <i class="fas fa-file-excel mr-1"></i>Excel
+                                </button>
+                            </div>
                             <button onclick="adminPanel.restoreBackup(${backup.id}, '${backup.backup_name}')"
                                 class="px-3 py-1 text-sm bg-green-100 text-green-800 rounded-md hover:bg-green-200">
                                 <i class="fas fa-undo mr-1"></i>Restore
@@ -5571,10 +5665,44 @@ class AdminPanel {
 
         } catch (error) {
             console.error('Failed to load backups:', error);
+            console.error('Error details:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                headers: error.response?.headers
+            });
+            
+            let errorMessage = 'Unknown error';
+            let actionButton = '';
+            
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                errorMessage = 'Authentication failed. Please log in again.';
+                actionButton = '<button onclick="adminPanel.showLogin()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Login Again</button>';
+                // Clear invalid token
+                console.log('Clearing invalid token and redirecting to login...');
+                this.token = null;
+                localStorage.removeItem('admin_token');
+            } else if (error.message?.includes('timeout')) {
+                errorMessage = 'Request timed out. Please check your connection.';
+                actionButton = '<button onclick="adminPanel.loadBackups()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Try Again</button>';
+            } else if (error.message?.includes('Network Error') || error.message?.includes('CORS')) {
+                errorMessage = 'Network or CORS error. This might be due to HTTPS/HTTP protocol mismatch.';
+                actionButton = '<button onclick="adminPanel.loadBackups()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Retry</button>';
+            } else if (error.message?.includes('Unexpected token')) {
+                errorMessage = 'Server returned invalid response format. This might be a routing or CORS issue.';
+                actionButton = '<button onclick="adminPanel.loadBackups()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Retry</button>';
+            } else {
+                errorMessage = error.message || 'Failed to load backup data';
+                actionButton = '<button onclick="adminPanel.loadBackups()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Retry</button>';
+            }
+            
             document.getElementById('backups-list').innerHTML = `
                 <div class="text-center py-8 text-red-500">
                     <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
-                    <p>Failed to load backups</p>
+                    <p class="font-semibold">Failed to load backups</p>
+                    <p class="text-sm mt-2">${errorMessage}</p>
+                    <p class="text-xs mt-1 text-gray-500">Check console for technical details</p>
+                    ${actionButton}
                 </div>
             `;
         }
@@ -5673,6 +5801,125 @@ class AdminPanel {
         });
     }
 
+    showUploadBackupModal() {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50';
+        modal.innerHTML = `
+            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                <div class="mt-3">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Upload Backup File</h3>
+                    <form id="upload-backup-form">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Backup File</label>
+                            <input type="file" id="backup-file" accept=".json" required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                            <p class="text-xs text-gray-500 mt-1">⚠️ Only JSON backup files can be restored. CSV files are for viewing only.</p>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Backup Name</label>
+                            <input type="text" id="upload-backup-name" required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-blue focus:border-brand-blue"
+                                placeholder="Enter backup name" value="uploaded_backup_${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="mb-4">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="overwrite-existing" class="mr-2">
+                                <span class="text-sm text-gray-700">Overwrite existing data (destructive operation)</span>
+                            </label>
+                            <p class="text-xs text-red-500 mt-1">⚠️ This will replace all current database records with backup data</p>
+                        </div>
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="this.closest('.fixed').remove()"
+                                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                                Cancel
+                            </button>
+                            <button type="submit"
+                                class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700">
+                                <i class="fas fa-upload mr-2"></i>Upload & Restore
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Handle form submission
+        document.getElementById('upload-backup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('backup-file');
+            const nameInput = document.getElementById('upload-backup-name');
+            const overwriteCheckbox = document.getElementById('overwrite-existing');
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a backup file');
+                return;
+            }
+            
+            if (!overwriteCheckbox.checked) {
+                alert('You must check the overwrite confirmation to proceed');
+                return;
+            }
+
+            try {
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Uploading...';
+                submitBtn.disabled = true;
+
+                const file = fileInput.files[0];
+                const backupName = nameInput.value || `uploaded_backup_${new Date().toISOString().split('T')[0]}`;
+                
+                // Read file content
+                const fileContent = await this.readFileAsText(file);
+                let backupData;
+                
+                // Parse JSON or CSV
+                if (file.name.toLowerCase().endsWith('.json')) {
+                    backupData = JSON.parse(fileContent);
+                } else if (file.name.toLowerCase().endsWith('.csv')) {
+                    // For CSV, we'd need a more complex parser - for now, show error
+                    throw new Error('CSV upload not yet implemented. Please use JSON format.');
+                } else {
+                    throw new Error('Unsupported file format. Please use JSON or CSV files.');
+                }
+                
+                // Send to backend API
+                const response = await this.apiCall('/admin/backups/upload', 'POST', {
+                    backup_name: backupName,
+                    backup_data: backupData,
+                    overwrite: true
+                });
+
+                if (response.success) {
+                    modal.remove();
+                    this.showNotification('Backup uploaded and restored successfully!', 'success');
+                    this.loadBackups(); // Refresh the backup list
+                } else {
+                    throw new Error(response.message || 'Failed to upload backup');
+                }
+
+            } catch (error) {
+                console.error('Upload backup failed:', error);
+                this.showNotification('Failed to upload backup: ' + error.message, 'error');
+            } finally {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    }
+
+    async readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
     async restoreBackup(backupId, backupName) {
         if (!confirm(`Are you sure you want to restore from backup "${backupName}"? This will overwrite all current data!`)) {
             return;
@@ -5695,27 +5942,109 @@ class AdminPanel {
         }
     }
 
-    async downloadBackup(backupId, backupName) {
+    async downloadBackup(backupId, backupName, format = 'json') {
         try {
-            this.showNotification('Preparing backup download...', 'info');
+            this.showNotification(`Preparing ${format.toUpperCase()} backup download...`, 'info');
             
-            // Create a download link for the backup
-            const downloadUrl = `${this.apiBaseUrl}/admin/backups/${backupId}/download`;
+            // Always get JSON data first
+            const response = await fetch(`${this.apiBaseUrl}/admin/backups/${backupId}/download`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+            }
+
+            let blob, fileName;
             
-            // Create temporary download link
+            if (format === 'csv') {
+                // Get JSON data and convert to CSV
+                const jsonData = await response.json();
+                const csvContent = this.convertBackupToCSV(jsonData);
+                
+                // Create CSV blob
+                blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                fileName = `${backupName}.csv`;
+            } else {
+                // Use JSON blob directly
+                blob = await response.blob();
+                fileName = `${backupName}.json`;
+            }
+            
+            // Create download link with blob URL
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = `${backupName}.json`;
+            link.href = url;
+            link.download = fileName;
             link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
             
-            // Add authorization header by opening in new window
-            window.open(`${downloadUrl}?token=${this.token}`, '_blank');
+            // Clean up the blob URL
+            window.URL.revokeObjectURL(url);
             
-            this.showNotification('Backup download started', 'success');
+            this.showNotification(`${format.toUpperCase()} backup downloaded successfully`, 'success');
         } catch (error) {
             console.error('Download backup failed:', error);
-            this.showNotification('Failed to download backup: ' + error.message, 'error');
+            this.showNotification(`Failed to download ${format.toUpperCase()} backup: ` + error.message, 'error');
         }
+    }
+
+    convertBackupToCSV(backupData) {
+        let csvContent = '';
+        
+        // Add header with backup info
+        csvContent += `"Backup Information"\n`;
+        csvContent += `"Name","${backupData.backup_name || 'Unknown'}"\n`;
+        csvContent += `"Created","${backupData.created_at || 'Unknown'}"\n`;
+        csvContent += `"Created By","${backupData.created_by || 'Unknown'}"\n`;
+        csvContent += `"Status","${backupData.status || 'Unknown'}"\n\n`;
+        
+        // Process each table's data
+        const tables = ['customers', 'products', 'licenses', 'security_events', 'admin_users'];
+        
+        tables.forEach(tableName => {
+            const tableData = backupData.data?.[tableName];
+            if (tableData && Array.isArray(tableData) && tableData.length > 0) {
+                csvContent += `"${tableName.toUpperCase()} (${tableData.length} records)"\n`;
+                
+                // Get column headers from first record
+                const headers = Object.keys(tableData[0]);
+                csvContent += headers.map(h => `"${h}"`).join(',') + '\n';
+                
+                // Add data rows
+                tableData.forEach(record => {
+                    const row = headers.map(header => {
+                        const value = record[header];
+                        // Handle different data types
+                        if (value === null || value === undefined) {
+                            return '""';
+                        } else if (typeof value === 'object') {
+                            return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+                        } else {
+                            return `"${String(value).replace(/"/g, '""')}"`;
+                        }
+                    });
+                    csvContent += row.join(',') + '\n';
+                });
+                csvContent += '\n'; // Empty line between tables
+            }
+        });
+        
+        // Add summary at the end
+        csvContent += `"BACKUP SUMMARY"\n`;
+        tables.forEach(tableName => {
+            const tableData = backupData.data?.[tableName];
+            const count = (tableData && Array.isArray(tableData)) ? tableData.length : 0;
+            csvContent += `"${tableName}","${count} records"\n`;
+        });
+        
+        return csvContent;
     }
 
     async deleteBackup(backupId, backupName) {

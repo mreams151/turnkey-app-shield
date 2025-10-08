@@ -25,6 +25,14 @@ app.use('/api/*', cors({
   credentials: true
 }));
 
+// Add CORS for admin routes
+app.use('/admin/*', cors({
+  origin: '*', // Configure appropriately for production
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true
+}));
+
 // Maintenance mode middleware - blocks public APIs during maintenance
 const maintenanceMiddleware = async (c: any, next: any) => {
   try {
@@ -1054,6 +1062,135 @@ app.get('/api/test/admin', async (c) => {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
+});
+
+// Test endpoint for token validation (simple version)
+app.get('/admin/test/token', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  
+  return c.json({
+    success: true,
+    has_auth_header: !!authHeader,
+    header_format: authHeader ? (authHeader.startsWith('Bearer ') ? 'Bearer format' : 'Wrong format') : 'None',
+    current_time: new Date().toISOString()
+  });
+});
+
+// Simple test page for debugging authentication
+app.get('/test-auth', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Authentication Test</title>
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    </head>
+    <body>
+        <div style="padding: 20px; font-family: Arial;">
+            <h1>Authentication Test</h1>
+            
+            <div>
+                <h3>Step 1: Login</h3>
+                <button onclick="testLogin()">Test Login (admin/admin123)</button>
+                <div id="loginResult"></div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <h3>Step 2: Test Backup Endpoint</h3>
+                <button onclick="testBackups()">Test Backup Endpoint</button>
+                <div id="backupResult"></div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <h3>Debug Info</h3>
+                <div id="debugInfo"></div>
+            </div>
+        </div>
+
+        <script>
+            let token = null;
+            const apiBaseUrl = window.location.origin;
+            
+            async function testLogin() {
+                try {
+                    document.getElementById('loginResult').innerHTML = 'Testing login...';
+                    
+                    const response = await axios.post(\`\${apiBaseUrl}/admin/auth/login\`, {
+                        username: 'admin',
+                        password: 'admin123'
+                    });
+                    
+                    console.log('Login response:', response.data);
+                    
+                    if (response.data.success) {
+                        token = response.data.token;
+                        localStorage.setItem('test_admin_token', token);
+                        
+                        document.getElementById('loginResult').innerHTML = 
+                            \`<div style="color: green;">✅ Login successful!</div>
+                             <div>Token: \${token.substring(0, 20)}...</div>
+                             <div>User: \${response.data.admin?.username}</div>\`;
+                    } else {
+                        throw new Error(response.data.message || 'Login failed');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    document.getElementById('loginResult').innerHTML = 
+                        \`<div style="color: red;">❌ Login failed: \${error.message}</div>\`;
+                }
+            }
+            
+            async function testBackups() {
+                try {
+                    if (!token) {
+                        token = localStorage.getItem('test_admin_token');
+                    }
+                    
+                    if (!token) {
+                        document.getElementById('backupResult').innerHTML = 
+                            '<div style="color: red;">❌ No token found. Please login first.</div>';
+                        return;
+                    }
+                    
+                    document.getElementById('backupResult').innerHTML = 'Testing backup endpoint...';
+                    
+                    const response = await axios.get(\`\${apiBaseUrl}/admin/backups\`, {
+                        headers: {
+                            'Authorization': \`Bearer \${token}\`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    console.log('Backup response:', response.data);
+                    
+                    if (response.data.success) {
+                        document.getElementById('backupResult').innerHTML = 
+                            \`<div style="color: green;">✅ Backup endpoint working!</div>
+                             <div>Found \${response.data.backups.length} backups</div>
+                             <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; max-height: 200px; overflow-y: auto;">\${JSON.stringify(response.data.backups.slice(0, 2), null, 2)}</pre>\`;
+                    } else {
+                        throw new Error(response.data.message || 'Backup endpoint failed');
+                    }
+                } catch (error) {
+                    console.error('Backup error:', error);
+                    document.getElementById('backupResult').innerHTML = 
+                        \`<div style="color: red;">❌ Backup test failed: \${error.message}</div>
+                         <div>Status: \${error.response?.status}</div>
+                         <div>Response: \${error.response?.data ? JSON.stringify(error.response.data) : 'No response data'}</div>\`;
+                }
+            }
+            
+            // Auto-load debug info
+            document.getElementById('debugInfo').innerHTML = 
+                \`<div>Current URL: \${window.location.href}</div>
+                 <div>API Base URL: \${apiBaseUrl}</div>
+                 <div>Stored Token: \${localStorage.getItem('test_admin_token') ? 'Found' : 'None'}</div>\`;
+        </script>
+    </body>
+    </html>
+  `);
 });
 
 // Simple dashboard test
