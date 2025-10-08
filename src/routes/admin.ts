@@ -5353,67 +5353,7 @@ admin.post('/login-2fa', async (c) => {
   }
 });
 
-/**
- * EMERGENCY ADMIN BACKDOOR - Remove after use!
- * Requires special emergency password
- */
-admin.post('/emergency-reset-2fa', async (c) => {
-  try {
-    const { emergency_password, username } = await c.req.json();
-    
-    const db = new DatabaseManager(c.env.DB);
-    
-    // Check if emergency access is enabled
-    const accessSetting = await db.db.prepare(`
-      SELECT value FROM system_settings WHERE key = 'emergency_access_enabled'
-    `).bind().first();
-    
-    if (accessSetting?.value !== 'true') {
-      return c.json({
-        success: false,
-        message: 'Emergency access is disabled'
-      }, 403);
-    }
-    
-    // Get emergency password from database
-    const passwordSetting = await db.db.prepare(`
-      SELECT value FROM system_settings WHERE key = 'emergency_reset_password'
-    `).bind().first();
-    
-    const EMERGENCY_PASSWORD = passwordSetting?.value || 'EMERGENCY_RESET_2024_TURNKEY_ADMIN';
-    
-    if (emergency_password !== EMERGENCY_PASSWORD) {
-      return c.json({
-        success: false,
-        message: 'Invalid emergency password'
-      }, 401);
-    }
-    
-    // Reset 2FA for specified user (default to admin)
-    const targetUser = username || 'admin';
-    
-    await db.db.prepare(`
-      UPDATE admin_users 
-      SET two_fa_enabled = 0, totp_secret = NULL, backup_codes = NULL 
-      WHERE username = ?
-    `).bind(targetUser).run();
-    
-    console.log(`EMERGENCY: 2FA reset for user: ${targetUser}`);
-    
-    return c.json({
-      success: true,
-      message: `2FA has been reset for user: ${targetUser}. You can now log in with username/password only.`,
-      warning: 'SECURITY: Remove this emergency endpoint after use!'
-    });
-    
-  } catch (error) {
-    console.error('Emergency reset error:', error);
-    return c.json({
-      success: false,
-      message: 'Emergency reset failed'
-    }, 500);
-  }
-});
+// Emergency reset endpoint removed - use emergency login + admin panel instead
 
 /**
  * Emergency Settings Management
@@ -5444,39 +5384,31 @@ admin.get('/emergency/settings', authMiddleware, async (c) => {
   }
 });
 
-// Update emergency password
+// Update emergency login password
 admin.post('/emergency/update-password', authMiddleware, async (c) => {
   try {
-    const { type, password } = await c.req.json();
+    const { password } = await c.req.json();
     
-    if (!type || !password) {
+    if (!password) {
       return c.json({
         success: false,
-        message: 'Type and password are required'
-      }, 400);
-    }
-    
-    if (type !== 'reset' && type !== 'login') {
-      return c.json({
-        success: false,
-        message: 'Invalid password type'
+        message: 'Password is required'
       }, 400);
     }
     
     const db = new DatabaseManager(c.env.DB);
-    const settingKey = type === 'reset' ? 'emergency_reset_password' : 'emergency_login_password';
     
-    // Update or insert the setting
+    // Update emergency login password
     await db.db.prepare(`
       INSERT OR REPLACE INTO system_settings (key, value, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-    `).bind(settingKey, password).run();
+      VALUES ('emergency_login_password', ?, CURRENT_TIMESTAMP)
+    `).bind(password).run();
     
-    console.log(`Emergency ${type} password updated by admin`);
+    console.log('Emergency login password updated by admin');
     
     return c.json({
       success: true,
-      message: `Emergency ${type} password updated successfully`
+      message: 'Emergency login password updated successfully'
     });
     
   } catch (error) {

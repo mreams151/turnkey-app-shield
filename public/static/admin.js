@@ -4955,21 +4955,8 @@ class AdminPanel {
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Reset Password</label>
-                            <p class="text-xs text-gray-500 mb-2">Used for /admin/emergency-reset-2fa endpoint</p>
-                            <div class="flex space-x-2">
-                                <input type="text" id="emergency-reset-password" 
-                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Enter new emergency reset password">
-                                <button id="update-reset-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
-                                    Update
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
-                            <p class="text-xs text-gray-500 mb-2">Used for direct login bypass (username: admin, password: [this])</p>
+                            <p class="text-xs text-gray-500 mb-2">Use this as login password to bypass 2FA and access admin panel</p>
                             <div class="flex space-x-2">
                                 <input type="text" id="emergency-login-password" 
                                     class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -4992,11 +4979,15 @@ class AdminPanel {
                         </div>
                         
                         <div class="border-t border-gray-200 pt-4">
-                            <h4 class="text-sm font-medium text-gray-700 mb-2">Current Emergency Methods:</h4>
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">Emergency Access Method:</h4>
                             <div class="text-xs text-gray-600 space-y-1">
-                                <div>• Database reset: <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code></div>
-                                <div>• API endpoint: <code>POST /admin/emergency-reset-2fa</code></div>
-                                <div>• Login bypass: Use emergency password as login password</div>
+                                <div><strong>1. Emergency Login:</strong> Use emergency password to login and disable 2FA through admin panel</div>
+                                <div><strong>2. Database Direct:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code></div>
+                            </div>
+                            <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                                <div class="text-xs text-blue-700">
+                                    <strong>Recommended:</strong> Use emergency login → Settings → Disable 2FA (cleaner and safer)
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5266,19 +5257,6 @@ class AdminPanel {
     }
     
     setupEmergencySettingsHandlers() {
-        // Emergency reset password update
-        const updateResetBtn = document.getElementById('update-reset-password');
-        if (updateResetBtn) {
-            updateResetBtn.addEventListener('click', async () => {
-                const password = document.getElementById('emergency-reset-password').value;
-                if (!password) {
-                    this.showNotification('Please enter a password', 'error');
-                    return;
-                }
-                await this.updateEmergencyPassword('reset', password);
-            });
-        }
-        
         // Emergency login password update
         const updateLoginBtn = document.getElementById('update-login-password');
         if (updateLoginBtn) {
@@ -5288,7 +5266,7 @@ class AdminPanel {
                     this.showNotification('Please enter a password', 'error');
                     return;
                 }
-                await this.updateEmergencyPassword('login', password);
+                await this.updateEmergencyPassword(password);
             });
         }
         
@@ -5304,17 +5282,16 @@ class AdminPanel {
         this.loadEmergencySettings();
     }
     
-    async updateEmergencyPassword(type, password) {
+    async updateEmergencyPassword(password) {
         try {
             const response = await this.apiCall('/admin/emergency/update-password', 'POST', {
-                type: type,
                 password: password
             });
             
             if (response.success) {
-                this.showNotification(`Emergency ${type} password updated successfully`, 'success');
+                this.showNotification('Emergency login password updated successfully', 'success');
                 // Clear the input field
-                document.getElementById(`emergency-${type}-password`).value = '';
+                document.getElementById('emergency-login-password').value = '';
             } else {
                 this.showNotification(response.message || 'Failed to update password', 'error');
             }
