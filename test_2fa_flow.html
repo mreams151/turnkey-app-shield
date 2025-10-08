@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test 2FA Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>Testing 2FA Login Flow</h1>
+    <div id="results"></div>
+    
+    <script>
+    async function test2FAFlow() {
+        const results = document.getElementById('results');
+        
+        try {
+            // Test 1: Login without 2FA code (should return requires_2fa: true)
+            results.innerHTML += '<h3>Test 1: Login without 2FA code</h3>';
+            
+            const response1 = await axios.post('https://71066e37.turnkey-app-shield.pages.dev/admin/login-2fa', {
+                username: 'admin',
+                password: 'admin123'
+            });
+            
+            results.innerHTML += `<p>Response: ${JSON.stringify(response1.data, null, 2)}</p>`;
+            
+            if (response1.data.requires_2fa) {
+                results.innerHTML += '<p style="color: green;">✅ PASS: API correctly returns requires_2fa: true</p>';
+                
+                // Test 2: Check if user has valid TOTP secret
+                const debugResponse = await axios.post('https://71066e37.turnkey-app-shield.pages.dev/admin/debug/user-status', {
+                    username: 'admin'
+                });
+                
+                results.innerHTML += '<h3>Test 2: User Debug Info</h3>';
+                results.innerHTML += `<p>Debug Response: ${JSON.stringify(debugResponse.data, null, 2)}</p>`;
+                
+                if (debugResponse.data.debug_info.has_totp_secret) {
+                    results.innerHTML += '<p style="color: green;">✅ PASS: User has TOTP secret configured</p>';
+                    results.innerHTML += '<p style="color: blue;">ℹ️ To complete login, user needs to:</p>';
+                    results.innerHTML += '<ul>';
+                    results.innerHTML += '<li>1. Enter username: admin</li>';
+                    results.innerHTML += '<li>2. Enter password: admin123</li>';
+                    results.innerHTML += '<li>3. Click "Sign In" button</li>';
+                    results.innerHTML += '<li>4. When 2FA fields appear, enter TOTP code from authenticator app</li>';
+                    results.innerHTML += '<li>5. Click "Sign In with 2FA" button</li>';
+                    results.innerHTML += '</ul>';
+                } else {
+                    results.innerHTML += '<p style="color: red;">❌ FAIL: User missing TOTP secret</p>';
+                }
+            } else {
+                results.innerHTML += '<p style="color: red;">❌ FAIL: API should return requires_2fa: true</p>';
+            }
+            
+        } catch (error) {
+            results.innerHTML += `<p style="color: red;">❌ ERROR: ${error.message}</p>`;
+            results.innerHTML += `<p>Details: ${JSON.stringify(error.response?.data, null, 2)}</p>`;
+        }
+    }
+    
+    // Run the test
+    test2FAFlow();
+    </script>
+</body>
+</html>

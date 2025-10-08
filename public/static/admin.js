@@ -187,7 +187,7 @@ class AdminPanel {
                 loginData.backup_code = backupCode;
             }
             
-            const response = await axios.post(`${this.apiBaseUrl}/admin/auth/login`, loginData);
+            const response = await axios.post(`${this.apiBaseUrl}/admin/login-2fa`, loginData);
 
             if (response.data.success) {
                 this.token = response.data.token;
@@ -199,9 +199,9 @@ class AdminPanel {
                 
                 await this.loadDashboard();
             } else if (response.data.requires_2fa) {
-                // Show 2FA fields
+                // Show 2FA fields and stop processing - don't throw error
                 this.show2FALogin();
-                throw new Error(response.data.message || '2FA code required');
+                return; // Don't throw error, just return and let user enter 2FA code
             } else {
                 throw new Error(response.data.message || 'Login failed');
             }
@@ -255,8 +255,16 @@ class AdminPanel {
         // Focus on the 2FA code field
         document.getElementById('totp-code').focus();
         
-        // Update button text
-        document.getElementById('login-btn').innerHTML = 'Sign In with 2FA';
+        // Update button text and re-enable it
+        const loginBtn = document.getElementById('login-btn');
+        loginBtn.innerHTML = 'Sign In with 2FA';
+        loginBtn.disabled = false;
+        
+        // Hide any error messages
+        const errorDiv = document.getElementById('login-error');
+        if (errorDiv) {
+            errorDiv.classList.add('hidden');
+        }
     }
 
     async loadDashboard() {
