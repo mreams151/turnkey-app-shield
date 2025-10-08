@@ -8,9 +8,105 @@ import type { AppContext, AdminDashboardData } from '../types/database';
 import { DatabaseManager, DatabaseInitializer } from '../utils/database';
 import { PasswordUtils, TokenUtils, ModernCrypto } from '../utils/security';
 import { SystemHealthMonitor } from '../utils/health';
-// Import 2FA libraries
-import { authenticator } from 'otplib';
+// Import 2FA libraries - fallback to Web Crypto implementation
 import QRCode from 'qrcode';
+
+// Custom TOTP implementation using Web Crypto API (Cloudflare Workers compatible)
+class WebCryptoTOTP {
+  // Base32 encoding/decoding utilities
+  private static base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  
+  static generateSecret(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(20));
+    let result = '';
+    let bits = 0;
+    let value = 0;
+    
+    for (const byte of bytes) {
+      value = (value << 8) | byte;
+      bits += 8;
+      
+      while (bits >= 5) {
+        result += this.base32Chars[(value >>> (bits - 5)) & 31];
+        bits -= 5;
+      }
+    }
+    
+    if (bits > 0) {
+      result += this.base32Chars[(value << (5 - bits)) & 31];
+    }
+    
+    return result;
+  }
+  
+  static base32Decode(encoded: string): Uint8Array {
+    const cleanInput = encoded.toUpperCase().replace(/[^A-Z2-7]/g, '');
+    const output: number[] = [];
+    let bits = 0;
+    let value = 0;
+    
+    for (const char of cleanInput) {
+      const idx = this.base32Chars.indexOf(char);
+      if (idx === -1) continue;
+      
+      value = (value << 5) | idx;
+      bits += 5;
+      
+      if (bits >= 8) {
+        output.push((value >>> (bits - 8)) & 255);
+        bits -= 8;
+      }
+    }
+    
+    return new Uint8Array(output);
+  }
+  
+  static async generateTOTP(secret: string, timeStep: number = Math.floor(Date.now() / 30000)): Promise<string> {
+    const key = this.base32Decode(secret);
+    const counter = new ArrayBuffer(8);
+    const counterView = new DataView(counter);
+    counterView.setUint32(4, timeStep, false); // Big endian
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'HMAC', hash: 'SHA-1' },
+      false,
+      ['sign']
+    );
+    
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, counter);
+    const signatureBytes = new Uint8Array(signature);
+    
+    const offset = signatureBytes[19] & 0xf;
+    const code = (
+      ((signatureBytes[offset] & 0x7f) << 24) |
+      ((signatureBytes[offset + 1] & 0xff) << 16) |
+      ((signatureBytes[offset + 2] & 0xff) << 8) |
+      (signatureBytes[offset + 3] & 0xff)
+    ) % 1000000;
+    
+    return code.toString().padStart(6, '0');
+  }
+  
+  static async verifyTOTP(token: string, secret: string, window: number = 1): Promise<boolean> {
+    const currentTimeStep = Math.floor(Date.now() / 30000);
+    
+    for (let i = -window; i <= window; i++) {
+      const timeStep = currentTimeStep + i;
+      const generatedToken = await this.generateTOTP(secret, timeStep);
+      if (generatedToken === token) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  static keyuri(accountName: string, issuer: string, secret: string): string {
+    return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${secret}&period=30&digits=6&algorithm=SHA1&issuer=${encodeURIComponent(issuer)}`;
+  }
+}
 
 const admin = new Hono<AppContext>();
 
@@ -4872,13 +4968,12 @@ admin.post('/2fa/setup', authMiddleware, async (c) => {
       }, 400);
     }
     
-    // Generate new TOTP secret
-    const secret = authenticator.generateSecret();
+    // Generate new TOTP secret using Web Crypto API
+    const secret = WebCryptoTOTP.generateSecret();
     const issuer = 'TurnkeyAppShield';
-    const label = `${issuer}:${adminUser.username}`;
     
     // Create the authenticator URI
-    const otpauthUrl = authenticator.keyuri(adminUser.username, issuer, secret);
+    const otpauthUrl = WebCryptoTOTP.keyuri(adminUser.username, issuer, secret);
     
     // Generate QR code using string method (Cloudflare Workers compatible)
     let qrCodeDataUrl;
@@ -4955,16 +5050,30 @@ admin.post('/2fa/verify-setup', authMiddleware, async (c) => {
       }, 400);
     }
     
-    // Verify the code
-    const isValid = authenticator.verify({
-      token: code,
-      secret: user.totp_secret
+    // Verify the code using Web Crypto API implementation
+    console.log('2FA Verification attempt:', {
+      code: code,
+      secretLength: user.totp_secret?.length,
+      timestamp: Date.now()
     });
+    
+    let isValid = false;
+    try {
+      isValid = await WebCryptoTOTP.verifyTOTP(code, user.totp_secret, 2);
+      console.log('2FA Verification result:', { isValid, code });
+      
+    } catch (verifyError) {
+      console.error('2FA Verification error:', verifyError);
+      return c.json({
+        success: false,
+        message: 'TOTP verification failed due to system error'
+      }, 500);
+    }
     
     if (!isValid) {
       return c.json({
         success: false,
-        message: 'Invalid verification code. Please try again.'
+        message: 'Invalid verification code. Please try again. Make sure your device time is synchronized.'
       }, 400);
     }
     
@@ -5053,10 +5162,7 @@ admin.post('/2fa/disable', authMiddleware, async (c) => {
         }, 400);
       }
       
-      const isValid = authenticator.verify({
-        token: code,
-        secret: user.totp_secret
-      });
+      const isValid = await WebCryptoTOTP.verifyTOTP(code, user.totp_secret);
       
       if (!isValid) {
         return c.json({
@@ -5166,10 +5272,7 @@ admin.post('/login-2fa', async (c) => {
       
       // Try TOTP code first
       if (totp_code && user.totp_secret) {
-        codeValid = authenticator.verify({
-          token: totp_code,
-          secret: user.totp_secret
-        });
+        codeValid = await WebCryptoTOTP.verifyTOTP(totp_code, user.totp_secret);
       }
       
       // Try backup code if TOTP failed
