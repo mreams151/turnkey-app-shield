@@ -4927,6 +4927,80 @@ class AdminPanel {
                         </div>
                     </div>
                 </div>
+                
+                <!-- Emergency Access Settings -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="p-6 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            <i class="fas fa-exclamation-triangle mr-2 text-red-500"></i>
+                            Emergency Access Settings
+                        </h3>
+                        <p class="text-sm text-gray-500 mt-1">Configure emergency backdoor passwords for admin recovery</p>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-yellow-800">
+                                        Security Warning
+                                    </h3>
+                                    <p class="mt-2 text-sm text-yellow-700">
+                                        These emergency passwords bypass normal security. Only enable when needed and disable immediately after use.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Reset Password</label>
+                            <p class="text-xs text-gray-500 mb-2">Used for /admin/emergency-reset-2fa endpoint</p>
+                            <div class="flex space-x-2">
+                                <input type="text" id="emergency-reset-password" 
+                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter new emergency reset password">
+                                <button id="update-reset-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                    Update
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
+                            <p class="text-xs text-gray-500 mb-2">Used for direct login bypass (username: admin, password: [this])</p>
+                            <div class="flex space-x-2">
+                                <input type="text" id="emergency-login-password" 
+                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter new emergency login password">
+                                <button id="update-login-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                    Update
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Enable Emergency Access</label>
+                                <p class="text-sm text-gray-500">Temporarily enable emergency backdoor methods</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="emergency-access-toggle" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            </label>
+                        </div>
+                        
+                        <div class="border-t border-gray-200 pt-4">
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">Current Emergency Methods:</h4>
+                            <div class="text-xs text-gray-600 space-y-1">
+                                <div>• Database reset: <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code></div>
+                                <div>• API endpoint: <code>POST /admin/emergency-reset-2fa</code></div>
+                                <div>• Login bypass: Use emergency password as login password</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="mt-8 flex justify-end space-x-4">
@@ -4954,6 +5028,7 @@ class AdminPanel {
         // Setup event listeners
         this.setup2FAHandlers();
         this.setupMaintenanceModeHandler();
+        this.setupEmergencySettingsHandlers();
     }
     
     async load2FAStatus() {
@@ -5187,6 +5262,100 @@ class AdminPanel {
             statusElement.className = isActive 
                 ? 'text-sm font-medium text-red-600'
                 : 'text-sm font-medium text-green-600';
+        }
+    }
+    
+    setupEmergencySettingsHandlers() {
+        // Emergency reset password update
+        const updateResetBtn = document.getElementById('update-reset-password');
+        if (updateResetBtn) {
+            updateResetBtn.addEventListener('click', async () => {
+                const password = document.getElementById('emergency-reset-password').value;
+                if (!password) {
+                    this.showNotification('Please enter a password', 'error');
+                    return;
+                }
+                await this.updateEmergencyPassword('reset', password);
+            });
+        }
+        
+        // Emergency login password update
+        const updateLoginBtn = document.getElementById('update-login-password');
+        if (updateLoginBtn) {
+            updateLoginBtn.addEventListener('click', async () => {
+                const password = document.getElementById('emergency-login-password').value;
+                if (!password) {
+                    this.showNotification('Please enter a password', 'error');
+                    return;
+                }
+                await this.updateEmergencyPassword('login', password);
+            });
+        }
+        
+        // Emergency access toggle
+        const emergencyToggle = document.getElementById('emergency-access-toggle');
+        if (emergencyToggle) {
+            emergencyToggle.addEventListener('change', async (e) => {
+                await this.toggleEmergencyAccess(e.target.checked);
+            });
+        }
+        
+        // Load current emergency settings
+        this.loadEmergencySettings();
+    }
+    
+    async updateEmergencyPassword(type, password) {
+        try {
+            const response = await this.apiCall('/admin/emergency/update-password', 'POST', {
+                type: type,
+                password: password
+            });
+            
+            if (response.success) {
+                this.showNotification(`Emergency ${type} password updated successfully`, 'success');
+                // Clear the input field
+                document.getElementById(`emergency-${type}-password`).value = '';
+            } else {
+                this.showNotification(response.message || 'Failed to update password', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to update emergency password:', error);
+            this.showNotification('Failed to update emergency password', 'error');
+        }
+    }
+    
+    async toggleEmergencyAccess(enabled) {
+        try {
+            const response = await this.apiCall('/admin/emergency/toggle', 'POST', {
+                enabled: enabled
+            });
+            
+            if (response.success) {
+                this.showNotification(`Emergency access ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'warning' : 'success');
+            } else {
+                this.showNotification(response.message || 'Failed to toggle emergency access', 'error');
+                // Revert toggle state
+                document.getElementById('emergency-access-toggle').checked = !enabled;
+            }
+        } catch (error) {
+            console.error('Failed to toggle emergency access:', error);
+            this.showNotification('Failed to toggle emergency access', 'error');
+            document.getElementById('emergency-access-toggle').checked = !enabled;
+        }
+    }
+    
+    async loadEmergencySettings() {
+        try {
+            const response = await this.apiCall('/admin/emergency/settings');
+            
+            if (response.success) {
+                const toggle = document.getElementById('emergency-access-toggle');
+                if (toggle) {
+                    toggle.checked = response.settings.enabled || false;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load emergency settings:', error);
         }
     }
     
