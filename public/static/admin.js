@@ -5822,11 +5822,18 @@ class AdminPanel {
                                 placeholder="Enter backup name" value="uploaded_backup_${new Date().toISOString().split('T')[0]}">
                         </div>
                         <div class="mb-4">
-                            <label class="flex items-center">
-                                <input type="checkbox" id="overwrite-existing" class="mr-2">
-                                <span class="text-sm text-gray-700">Overwrite existing data (destructive operation)</span>
-                            </label>
-                            <p class="text-xs text-red-500 mt-1">⚠️ This will replace all current database records with backup data</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Upload Mode</label>
+                            <div class="space-y-2">
+                                <label class="flex items-center">
+                                    <input type="radio" name="upload-mode" value="upload-only" id="upload-only" class="mr-2" checked>
+                                    <span class="text-sm text-gray-700">Upload only (safe - just stores backup file)</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="upload-mode" value="upload-restore" id="upload-restore" class="mr-2">
+                                    <span class="text-sm text-gray-700">Upload and restore data (destructive operation)</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-blue-500 mt-1" id="upload-mode-help">✅ Upload only: Safely stores backup without affecting current data</p>
                         </div>
                         <div class="flex justify-end space-x-3">
                             <button type="button" onclick="this.closest('.fixed').remove()"
@@ -5845,23 +5852,37 @@ class AdminPanel {
 
         document.body.appendChild(modal);
 
+        // Handle radio button changes to update help text
+        const uploadOnlyRadio = document.getElementById('upload-only');
+        const uploadRestoreRadio = document.getElementById('upload-restore');
+        const helpText = document.getElementById('upload-mode-help');
+        
+        uploadOnlyRadio.addEventListener('change', () => {
+            if (uploadOnlyRadio.checked) {
+                helpText.innerHTML = '✅ Upload only: Safely stores backup without affecting current data';
+                helpText.className = 'text-xs text-blue-500 mt-1';
+            }
+        });
+        
+        uploadRestoreRadio.addEventListener('change', () => {
+            if (uploadRestoreRadio.checked) {
+                helpText.innerHTML = '⚠️ Upload and restore: Will replace ALL current database records with backup data';
+                helpText.className = 'text-xs text-red-500 mt-1';
+            }
+        });
+
         // Handle form submission
         document.getElementById('upload-backup-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const fileInput = document.getElementById('backup-file');
             const nameInput = document.getElementById('upload-backup-name');
-            const overwriteCheckbox = document.getElementById('overwrite-existing');
+            const uploadRestoreRadio = document.getElementById('upload-restore');
             const submitBtn = e.target.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
             
             if (!fileInput.files[0]) {
                 alert('Please select a backup file');
-                return;
-            }
-            
-            if (!overwriteCheckbox.checked) {
-                alert('You must check the overwrite confirmation to proceed');
                 return;
             }
 
@@ -5886,16 +5907,19 @@ class AdminPanel {
                     throw new Error('Unsupported file format. Please use JSON or CSV files.');
                 }
                 
+                // Determine if we should overwrite (restore) or just upload
+                const shouldRestore = uploadRestoreRadio.checked;
+                
                 // Send to backend API
                 const response = await this.apiCall('/admin/backups/upload', 'POST', {
                     backup_name: backupName,
                     backup_data: backupData,
-                    overwrite: true
+                    overwrite: shouldRestore
                 });
 
                 if (response.success) {
                     modal.remove();
-                    this.showNotification('Backup uploaded and restored successfully!', 'success');
+                    this.showNotification(response.message || 'Backup uploaded successfully!', 'success');
                     this.loadBackups(); // Refresh the backup list
                 } else {
                     throw new Error(response.message || 'Failed to upload backup');

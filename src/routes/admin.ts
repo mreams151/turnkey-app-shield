@@ -2262,6 +2262,122 @@ admin.get('/backups/:id/download', authMiddleware, async (c) => {
   }
 });
 
+// Upload and optionally restore backup
+admin.post('/backups/upload', authMiddleware, async (c) => {
+  try {
+    const { backup_name, backup_data, overwrite = false } = await c.req.json();
+    const adminUser = c.get('admin_user');
+    
+    if (!backup_name || !backup_data) {
+      return c.json({
+        success: false,
+        message: 'Backup name and data are required'
+      }, 400);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Process backup data - handle both raw data and wrapped formats
+    let processedData = backup_data;
+    if (backup_data.backup_info && backup_data.data) {
+      // This is a downloaded backup format with metadata
+      processedData = backup_data.data;
+    }
+    
+    // Calculate sizes and create hash
+    const jsonData = JSON.stringify(processedData);
+    const originalSize = Buffer.byteLength(jsonData, 'utf8');
+    const backupHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(jsonData));
+    const hashHex = Array.from(new Uint8Array(backupHash)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Extract table information
+    const tables = Object.keys(processedData);
+    const recordCounts: any = {};
+    let totalRecords = 0;
+    
+    for (const [tableName, tableData] of Object.entries(processedData)) {
+      const count = Array.isArray(tableData) ? tableData.length : 0;
+      recordCounts[tableName] = count;
+      totalRecords += count;
+    }
+
+    // Save backup record to database
+    const result = await db.db.prepare(`
+      INSERT INTO database_backups (
+        backup_name, backup_data, original_size, tables_included,
+        record_counts, backup_hash, created_by, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')
+    `).bind(
+      backup_name,
+      jsonData,
+      originalSize,
+      JSON.stringify(tables),
+      JSON.stringify(recordCounts),
+      hashHex,
+      adminUser.id
+    ).run();
+
+    const responseData: any = {
+      success: true,
+      backup_id: result.meta.last_row_id,
+      message: overwrite ? 'Backup uploaded and restored successfully' : 'Backup uploaded successfully',
+      stats: {
+        tables_uploaded: tables.length,
+        total_records: totalRecords,
+        backup_size: originalSize
+      }
+    };
+
+    // If overwrite is true, restore the data
+    if (overwrite) {
+      const restoredCounts: any = {};
+
+      // Restore each table (WARNING: This is destructive)
+      for (const [tableName, tableData] of Object.entries(processedData)) {
+        try {
+          // Clear existing data (be careful!)
+          await db.db.prepare(`DELETE FROM ${tableName}`).run();
+          
+          // Restore data
+          const records = Array.isArray(tableData) ? tableData : [];
+          let restoredCount = 0;
+          
+          for (const record of records) {
+            const fields = Object.keys(record);
+            const values = Object.values(record);
+            const placeholders = fields.map(() => '?').join(', ');
+            
+            await db.db.prepare(`
+              INSERT INTO ${tableName} (${fields.join(', ')}) VALUES (${placeholders})
+            `).bind(...values).run();
+            
+            restoredCount++;
+          }
+          
+          restoredCounts[tableName] = restoredCount;
+        } catch (e) {
+          console.log(`Warning: Could not restore table ${tableName}:`, e);
+          restoredCounts[tableName] = 0;
+        }
+      }
+      
+      responseData.restored_counts = restoredCounts;
+    }
+
+    // Log action
+    console.log(`Admin ${adminUser.username} uploaded backup: ${backup_name}${overwrite ? ' (with restore)' : ' (upload only)'}`);
+
+    return c.json(responseData);
+
+  } catch (error) {
+    console.error('Upload backup error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to upload backup'
+    }, 500);
+  }
+});
+
 // Resend license email to customer
 admin.post('/customers/:id/resend-license', authMiddleware, async (c) => {
   try {
