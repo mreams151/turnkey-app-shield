@@ -554,6 +554,66 @@ export class DatabaseInitializer {
 
     const tableNames = tables.results?.map(t => t.name) || [];
     
+    // Always ensure critical tables exist, even if database was partially initialized
+    const requiredTables = ['database_backups', 'admin_logs'];
+    const missingTables = requiredTables.filter(table => !tableNames.includes(table));
+    
+    if (missingTables.length > 0) {
+      console.log('Creating missing tables:', missingTables);
+      
+      // Create database_backups table if missing
+      if (missingTables.includes('database_backups')) {
+        await this.db.prepare(`
+          CREATE TABLE IF NOT EXISTS database_backups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            backup_name TEXT NOT NULL,
+            backup_data TEXT NOT NULL,
+            original_size INTEGER DEFAULT 0,
+            file_size INTEGER DEFAULT 0,
+            table_count INTEGER DEFAULT 0,
+            tables_included TEXT,
+            record_counts TEXT,
+            backup_hash TEXT,
+            description TEXT,
+            created_by TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed'))
+          )
+        `).run();
+        
+        // Create indexes
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_database_backups_created_by ON database_backups(created_by)`).run();
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_database_backups_created_at ON database_backups(created_at)`).run();
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_database_backups_status ON database_backups(status)`).run();
+      }
+      
+      // Create admin_logs table if missing
+      if (missingTables.includes('admin_logs')) {
+        await this.db.prepare(`
+          CREATE TABLE IF NOT EXISTS admin_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_username TEXT NOT NULL,
+            action TEXT NOT NULL,
+            entity_type TEXT,
+            entity_id INTEGER,
+            details TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            success BOOLEAN DEFAULT TRUE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run();
+        
+        // Create indexes
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_username ON admin_logs(admin_username)`).run();
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_logs_created_at ON admin_logs(created_at)`).run();
+        await this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_logs_action ON admin_logs(action)`).run();
+      }
+      
+      console.log('Missing tables created successfully');
+    }
+    
     if (tableNames.includes('customers')) {
       console.log('Database already initialized');
       return;
