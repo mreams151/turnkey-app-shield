@@ -197,6 +197,12 @@ class AdminPanel {
                 console.log('Login successful, token saved:', !!this.token);
                 console.log('Current user:', this.currentUser?.username);
                 
+                // Check for emergency login warning
+                if (response.data.emergency_login_used) {
+                    console.warn('EMERGENCY LOGIN DETECTED:', response.data.warning);
+                    this.showEmergencyWarning(response.data.warning);
+                }
+                
                 await this.loadDashboard();
             } else if (response.data.requires_2fa) {
                 // Show 2FA fields and stop processing - don't throw error
@@ -5343,6 +5349,54 @@ class AdminPanel {
         } catch (error) {
             console.error('Failed to load emergency settings:', error);
         }
+    }
+    
+    showEmergencyWarning(message) {
+        // Create emergency warning modal
+        const warningModal = document.createElement('div');
+        warningModal.id = 'emergency-warning-modal';
+        warningModal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+        warningModal.innerHTML = `
+            <div class="bg-white rounded-lg p-8 max-w-md mx-4 border-4 border-red-500">
+                <div class="text-center">
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                        <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-red-800 mb-2">Emergency Password Consumed!</h3>
+                    <p class="text-sm text-gray-700 mb-6">${message}</p>
+                    
+                    <div class="space-y-3">
+                        <button id="goto-emergency-settings" class="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium">
+                            Go to Emergency Settings Now
+                        </button>
+                        <button id="dismiss-warning" class="w-full px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                            I'll Set It Later (Risky)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(warningModal);
+        
+        // Add event listeners
+        document.getElementById('goto-emergency-settings').addEventListener('click', () => {
+            document.body.removeChild(warningModal);
+            this.showPage('settings'); // Navigate to settings page
+            // Show notification to guide user
+            setTimeout(() => {
+                this.showNotification('Set a new emergency password in the Emergency Access Settings section below', 'warning');
+            }, 500);
+        });
+        
+        document.getElementById('dismiss-warning').addEventListener('click', () => {
+            document.body.removeChild(warningModal);
+            // Show persistent warning in dashboard
+            this.showNotification('WARNING: Set a new emergency password! Current one was consumed.', 'error');
+        });
+        
+        // Auto-focus on primary action
+        document.getElementById('goto-emergency-settings').focus();
     }
     
     async start2FASetup() {

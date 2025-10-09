@@ -5334,7 +5334,8 @@ admin.post('/login-2fa', async (c) => {
     // Log successful login
     console.log(`Admin login successful: ${user.username} (2FA: ${user.two_fa_enabled ? 'Yes' : 'No'})`);
     
-    return c.json({
+    // Prepare response
+    const response = {
       success: true,
       token,
       user: {
@@ -5343,7 +5344,15 @@ admin.post('/login-2fa', async (c) => {
         role: user.role,
         two_fa_enabled: user.two_fa_enabled
       }
-    });
+    };
+    
+    // Add emergency warning if emergency login was used
+    if (isEmergencyBypass) {
+      response.emergency_login_used = true;
+      response.warning = 'SECURITY: Emergency password has been consumed and deleted. Set a new emergency password immediately!';
+    }
+    
+    return c.json(response);
     
   } catch (error) {
     console.error('Login error:', error);
