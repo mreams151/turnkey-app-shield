@@ -423,7 +423,7 @@ admin.post('/auth/change-password', authMiddleware, async (c) => {
     }
 
     // Get current user from token
-    const user = c.get('user');
+    const user = c.get('admin_user');
     if (!user) {
       return c.json({
         success: false,
