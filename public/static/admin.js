@@ -4957,36 +4957,43 @@ class AdminPanel {
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
                             <p class="text-xs text-gray-500 mb-2">Use this as login password to bypass 2FA and access admin panel</p>
-                            <div class="flex space-x-2">
-                                <input type="text" id="emergency-login-password" 
-                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Enter new emergency login password">
-                                <button id="update-login-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
-                                    Update
-                                </button>
+                            <div class="space-y-3">
+                                <div class="flex space-x-2">
+                                    <input type="text" id="emergency-login-password" 
+                                        class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter new emergency login password">
+                                    <button id="update-login-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                        Set Password
+                                    </button>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <div id="emergency-status" class="text-sm font-medium text-orange-600">
+                                        Loading status...
+                                    </div>
+                                    <button id="remove-emergency-password" class="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600">
+                                        Remove Password
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <label class="text-sm font-medium text-gray-700">Enable Emergency Access</label>
-                                <p class="text-sm text-gray-500">Temporarily enable emergency backdoor methods</p>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="emergency-access-toggle" class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                            </label>
-                        </div>
-                        
+
                         <div class="border-t border-gray-200 pt-4">
-                            <h4 class="text-sm font-medium text-gray-700 mb-2">Emergency Access Method:</h4>
-                            <div class="text-xs text-gray-600 space-y-1">
-                                <div><strong>1. Emergency Login:</strong> Use emergency password to login and disable 2FA through admin panel</div>
-                                <div><strong>2. Database Direct:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code></div>
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">How Emergency Access Works:</h4>
+                            <div class="text-xs text-gray-600 space-y-2">
+                                <div><strong>1. Set Password:</strong> Enter and save a strong emergency password</div>
+                                <div><strong>2. Emergency Login:</strong> Use emergency password as login password to bypass 2FA</div>
+                                <div><strong>3. One-Time Use:</strong> Password is automatically deleted after use for security</div>
+                                <div><strong>4. Fix 2FA:</strong> Go to Settings → Disable/Re-enable 2FA with fresh setup</div>
                             </div>
-                            <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
-                                <div class="text-xs text-blue-700">
-                                    <strong>Recommended:</strong> Use emergency login → Settings → Disable 2FA (cleaner and safer)
+                            <div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
+                                <div class="text-xs text-orange-700">
+                                    <strong>Security:</strong> Emergency password self-destructs after use. Set a new one immediately after emergency access.
+                                </div>
+                            </div>
+                            <div class="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
+                                <div class="text-xs text-gray-600">
+                                    <strong>Fallback:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code>
                                 </div>
                             </div>
                         </div>
@@ -5270,11 +5277,13 @@ class AdminPanel {
             });
         }
         
-        // Emergency access toggle
-        const emergencyToggle = document.getElementById('emergency-access-toggle');
-        if (emergencyToggle) {
-            emergencyToggle.addEventListener('change', async (e) => {
-                await this.toggleEmergencyAccess(e.target.checked);
+        // Remove emergency password button
+        const removePasswordBtn = document.getElementById('remove-emergency-password');
+        if (removePasswordBtn) {
+            removePasswordBtn.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to remove the emergency password? This will disable emergency access.')) {
+                    await this.removeEmergencyPassword();
+                }
             });
         }
         
@@ -5289,9 +5298,10 @@ class AdminPanel {
             });
             
             if (response.success) {
-                this.showNotification('Emergency login password updated successfully', 'success');
-                // Clear the input field
+                this.showNotification('Emergency login password updated successfully (one-time use)', 'success');
+                // Clear the input field and refresh status
                 document.getElementById('emergency-login-password').value = '';
+                this.loadEmergencySettings();
             } else {
                 this.showNotification(response.message || 'Failed to update password', 'error');
             }
@@ -5301,27 +5311,41 @@ class AdminPanel {
         }
     }
     
-    async toggleEmergencyAccess(enabled) {
+    async removeEmergencyPassword() {
         try {
-            const response = await this.apiCall('/admin/emergency/toggle', 'POST', {
-                enabled: enabled
-            });
+            const response = await this.apiCall('/admin/emergency/remove', 'POST');
             
             if (response.success) {
-                this.showNotification(`Emergency access ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'warning' : 'success');
+                this.showNotification('Emergency password removed - emergency access disabled', 'success');
+                this.loadEmergencySettings();
             } else {
-                this.showNotification(response.message || 'Failed to toggle emergency access', 'error');
-                // Revert toggle state
-                document.getElementById('emergency-access-toggle').checked = !enabled;
+                this.showNotification(response.message || 'Failed to remove password', 'error');
             }
         } catch (error) {
-            console.error('Failed to toggle emergency access:', error);
-            this.showNotification('Failed to toggle emergency access', 'error');
-            document.getElementById('emergency-access-toggle').checked = !enabled;
+            console.error('Failed to remove emergency password:', error);
+            this.showNotification('Failed to remove emergency password', 'error');
         }
     }
     
     async loadEmergencySettings() {
+        try {
+            const response = await this.apiCall('/admin/emergency/settings');
+            
+            if (response.success) {
+                const statusElement = document.getElementById('emergency-status');
+                if (statusElement) {
+                    statusElement.textContent = response.settings.status;
+                    statusElement.className = response.settings.has_password 
+                        ? 'text-sm font-medium text-green-600'
+                        : 'text-sm font-medium text-orange-600';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load emergency settings:', error);
+        }
+    }
+    
+    async start2FASetup() {
         try {
             const response = await this.apiCall('/admin/emergency/settings');
             

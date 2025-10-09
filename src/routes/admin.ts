@@ -5258,22 +5258,23 @@ admin.post('/login-2fa', async (c) => {
       }, 401);
     }
     
-    // EMERGENCY BYPASS: Check for emergency password to skip 2FA
+    // EMERGENCY BYPASS: Check for one-time emergency password
     let isEmergencyBypass = false;
     
-    // Check if emergency access is enabled
-    const accessSetting = await db.db.prepare(`
-      SELECT value FROM system_settings WHERE key = 'emergency_access_enabled'
+    // Get emergency login password from database
+    const loginPasswordSetting = await db.db.prepare(`
+      SELECT value FROM system_settings WHERE key = 'emergency_login_password'
     `).bind().first();
     
-    if (accessSetting?.value === 'true') {
-      // Get emergency login password from database
-      const loginPasswordSetting = await db.db.prepare(`
-        SELECT value FROM system_settings WHERE key = 'emergency_login_password'
-      `).bind().first();
+    if (loginPasswordSetting?.value && password === loginPasswordSetting.value) {
+      isEmergencyBypass = true;
       
-      const EMERGENCY_BYPASS_PASSWORD = loginPasswordSetting?.value || 'ADMIN_EMERGENCY_BYPASS_2024';
-      isEmergencyBypass = password === EMERGENCY_BYPASS_PASSWORD;
+      // SECURITY: Clear the emergency password after use (one-time use)
+      await db.db.prepare(`
+        DELETE FROM system_settings WHERE key = 'emergency_login_password'
+      `).run();
+      
+      console.log(`SECURITY: Emergency password used and cleared for user: ${username}`);
     }
     
     // If 2FA is enabled, verify the code (unless emergency bypass)
@@ -5365,13 +5366,14 @@ admin.get('/emergency/settings', authMiddleware, async (c) => {
     const db = new DatabaseManager(c.env.DB);
     
     const setting = await db.db.prepare(`
-      SELECT value FROM system_settings WHERE key = 'emergency_access_enabled'
+      SELECT value FROM system_settings WHERE key = 'emergency_login_password'
     `).bind().first();
     
     return c.json({
       success: true,
       settings: {
-        enabled: setting?.value === 'true'
+        has_password: !!setting?.value,
+        status: setting?.value ? 'Password set (ready for emergency use)' : 'No emergency password configured'
       }
     });
     
@@ -5420,29 +5422,27 @@ admin.post('/emergency/update-password', authMiddleware, async (c) => {
   }
 });
 
-// Toggle emergency access
-admin.post('/emergency/toggle', authMiddleware, async (c) => {
+// Remove emergency password (disable emergency access)
+admin.post('/emergency/remove', authMiddleware, async (c) => {
   try {
-    const { enabled } = await c.req.json();
     const db = new DatabaseManager(c.env.DB);
     
     await db.db.prepare(`
-      INSERT OR REPLACE INTO system_settings (key, value, updated_at)
-      VALUES ('emergency_access_enabled', ?, CURRENT_TIMESTAMP)
-    `).bind(enabled ? 'true' : 'false').run();
+      DELETE FROM system_settings WHERE key = 'emergency_login_password'
+    `).run();
     
-    console.log(`Emergency access ${enabled ? 'enabled' : 'disabled'} by admin`);
+    console.log('Emergency password removed by admin');
     
     return c.json({
       success: true,
-      message: `Emergency access ${enabled ? 'enabled' : 'disabled'}`
+      message: 'Emergency password removed - emergency access disabled'
     });
     
   } catch (error) {
-    console.error('Toggle emergency access error:', error);
+    console.error('Remove emergency password error:', error);
     return c.json({
       success: false,
-      message: 'Failed to toggle emergency access'
+      message: 'Failed to remove emergency password'
     }, 500);
   }
 });
