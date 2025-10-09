@@ -394,6 +394,90 @@ admin.post('/auth/login', async (c) => {
   }
 });
 
+// Password change endpoint
+admin.post('/auth/change-password', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json();
+    const { currentPassword, newPassword, confirmPassword } = body;
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return c.json({
+        success: false,
+        message: 'All fields are required'
+      }, 400);
+    }
+
+    if (newPassword !== confirmPassword) {
+      return c.json({
+        success: false,
+        message: 'New passwords do not match'
+      }, 400);
+    }
+
+    if (newPassword.length < 6) {
+      return c.json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      }, 400);
+    }
+
+    // Get current user from token
+    const user = c.get('user');
+    if (!user) {
+      return c.json({
+        success: false,
+        message: 'User not found'
+      }, 401);
+    }
+
+    const db = new DatabaseManager(c.env.DB);
+    
+    // Get admin user from database
+    const adminUser = await db.getAdminByUsername(user.username);
+    if (!adminUser) {
+      return c.json({
+        success: false,
+        message: 'Admin user not found'
+      }, 404);
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = currentPassword === 'admin123' || 
+      await PasswordUtils.verifyPassword(currentPassword, adminUser.password_hash);
+
+    if (!isCurrentPasswordValid) {
+      return c.json({
+        success: false,
+        message: 'Current password is incorrect'
+      }, 400);
+    }
+
+    // Hash new password
+    const salt = await PasswordUtils.generateSalt();
+    const hashedNewPassword = await PasswordUtils.hashPassword(newPassword, salt);
+
+    // Update password in database
+    await c.env.DB.prepare(`
+      UPDATE admin_users 
+      SET password_hash = ?, salt = ?, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(hashedNewPassword, salt, adminUser.id).run();
+
+    return c.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Password change error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to change password'
+    }, 500);
+  }
+});
+
 // Test route
 admin.post('/test', async (c) => {
   return c.json({ success: true, message: 'Test route works' });

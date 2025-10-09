@@ -5034,6 +5034,39 @@ class AdminPanel {
                             </div>
                         </div>
                         
+                        <!-- Change Password Section -->
+                        <div class="border-t border-gray-200 pt-6">
+                            <h4 class="text-sm font-medium text-gray-700 mb-4">
+                                <i class="fas fa-key mr-2 text-blue-600"></i>Change Password
+                            </h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
+                                    <input type="password" id="current-password" 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter current password">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+                                    <input type="password" id="new-password" 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter new password (min 6 characters)">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
+                                    <input type="password" id="confirm-new-password" 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Confirm new password">
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <button id="change-password-btn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                        <i class="fas fa-save mr-2"></i>Change Password
+                                    </button>
+                                    <div id="password-change-status" class="hidden text-sm"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
                             <p class="text-xs text-gray-500 mb-2">Use this as login password to bypass 2FA and access admin panel</p>
@@ -5106,6 +5139,7 @@ class AdminPanel {
         // Setup event listeners
         this.setup2FAHandlers();
         this.setupMaintenanceModeHandler();
+        this.setupPasswordChangeHandlers();
         this.setupEmergencySettingsHandlers();
     }
     
@@ -5404,6 +5438,103 @@ class AdminPanel {
         }
     }
     
+    setupPasswordChangeHandlers() {
+        const changePasswordBtn = document.getElementById('change-password-btn');
+        if (changePasswordBtn) {
+            changePasswordBtn.addEventListener('click', () => {
+                this.changePassword();
+            });
+        }
+
+        // Enable Enter key for password change
+        const passwordFields = ['current-password', 'new-password', 'confirm-new-password'];
+        passwordFields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.changePassword();
+                    }
+                });
+            }
+        });
+    }
+
+    async changePassword() {
+        const currentPassword = document.getElementById('current-password')?.value;
+        const newPassword = document.getElementById('new-password')?.value;
+        const confirmPassword = document.getElementById('confirm-new-password')?.value;
+        const statusDiv = document.getElementById('password-change-status');
+        const changeBtn = document.getElementById('change-password-btn');
+
+        // Validation
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            this.showPasswordChangeStatus('All fields are required', 'error');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            this.showPasswordChangeStatus('New passwords do not match', 'error');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            this.showPasswordChangeStatus('New password must be at least 6 characters long', 'error');
+            return;
+        }
+
+        // Disable button during request
+        const originalText = changeBtn.innerHTML;
+        changeBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Changing...';
+        changeBtn.disabled = true;
+
+        try {
+            const response = await axios.post(`${this.apiBaseUrl}/admin/auth/change-password`, {
+                currentPassword,
+                newPassword,
+                confirmPassword
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (response.data.success) {
+                this.showPasswordChangeStatus('Password changed successfully!', 'success');
+                
+                // Clear form fields
+                document.getElementById('current-password').value = '';
+                document.getElementById('new-password').value = '';
+                document.getElementById('confirm-new-password').value = '';
+
+                // Show success message for 3 seconds
+                setTimeout(() => {
+                    statusDiv.classList.add('hidden');
+                }, 3000);
+            } else {
+                this.showPasswordChangeStatus(response.data.message || 'Failed to change password', 'error');
+            }
+
+        } catch (error) {
+            console.error('Password change error:', error);
+            const message = error.response?.data?.message || 'Failed to change password';
+            this.showPasswordChangeStatus(message, 'error');
+        } finally {
+            // Re-enable button
+            changeBtn.innerHTML = originalText;
+            changeBtn.disabled = false;
+        }
+    }
+
+    showPasswordChangeStatus(message, type) {
+        const statusDiv = document.getElementById('password-change-status');
+        if (statusDiv) {
+            statusDiv.className = `text-sm ${type === 'success' ? 'text-green-600' : 'text-red-600'}`;
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
+        }
+    }
+
     setupEmergencySettingsHandlers() {
         // Emergency login password update
         const updateLoginBtn = document.getElementById('update-login-password');
