@@ -5007,35 +5007,6 @@ class AdminPanel {
                         </div>
                     </div>
                 </div>
-                
-                <!-- Emergency Access Settings -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-                    <div class="p-6 border-b border-gray-200">
-                        <h3 class="text-lg font-semibold text-gray-900">
-                            <i class="fas fa-exclamation-triangle mr-2 text-red-500"></i>
-                            Emergency Access Settings
-                        </h3>
-                        <p class="text-sm text-gray-500 mt-1">Configure emergency backdoor passwords for admin recovery</p>
-                    </div>
-                    <div class="p-6 space-y-6">
-                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <h3 class="text-sm font-medium text-yellow-800">
-                                        Security Warning
-                                    </h3>
-                                    <p class="mt-2 text-sm text-yellow-700">
-                                        These emergency passwords bypass normal security. Only enable when needed and disable immediately after use.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                    </div>
-                </div>
 
                 <!-- Change Password Section -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200">
