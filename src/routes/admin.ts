@@ -5411,8 +5411,8 @@ admin.post('/emergency/update-password', authMiddleware, async (c) => {
     
     // Update emergency login password
     await db.db.prepare(`
-      INSERT OR REPLACE INTO system_settings (key, value, updated_at)
-      VALUES ('emergency_login_password', ?, CURRENT_TIMESTAMP)
+      INSERT OR REPLACE INTO system_settings (category, key, value, description, is_sensitive, updated_at)
+      VALUES ('security', 'emergency_login_password', ?, 'One-time emergency login password for admin recovery', TRUE, CURRENT_TIMESTAMP)
     `).bind(password).run();
     
     console.log('Emergency login password updated by admin');
@@ -5424,9 +5424,15 @@ admin.post('/emergency/update-password', authMiddleware, async (c) => {
     
   } catch (error) {
     console.error('Update emergency password error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    
     return c.json({
       success: false,
-      message: 'Failed to update emergency password'
+      message: `Failed to update emergency password: ${error.message}`
     }, 500);
   }
 });

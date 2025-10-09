@@ -5299,9 +5299,16 @@ class AdminPanel {
     
     async updateEmergencyPassword(password) {
         try {
+            console.log('DEBUG: Updating emergency password...');
+            console.log('DEBUG: Token exists:', !!this.token);
+            console.log('DEBUG: Token length:', this.token ? this.token.length : 0);
+            console.log('DEBUG: API Base URL:', this.apiBaseUrl);
+            
             const response = await this.apiCall('/admin/emergency/update-password', 'POST', {
                 password: password
             });
+            
+            console.log('DEBUG: Emergency password update response:', response);
             
             if (response.success) {
                 this.showNotification('Emergency login password updated successfully (one-time use)', 'success');
@@ -5309,11 +5316,24 @@ class AdminPanel {
                 document.getElementById('emergency-login-password').value = '';
                 this.loadEmergencySettings();
             } else {
+                console.error('DEBUG: Update failed with response:', response);
                 this.showNotification(response.message || 'Failed to update password', 'error');
             }
         } catch (error) {
-            console.error('Failed to update emergency password:', error);
-            this.showNotification('Failed to update emergency password', 'error');
+            console.error('DEBUG: Exception during emergency password update:', error);
+            console.error('DEBUG: Error response:', error.response?.data);
+            console.error('DEBUG: Error status:', error.response?.status);
+            
+            // More specific error messages
+            if (error.response?.status === 401) {
+                this.showNotification('Authentication failed - please login again', 'error');
+            } else if (error.response?.status === 403) {
+                this.showNotification('Access denied - insufficient permissions', 'error');
+            } else if (error.response?.data?.message) {
+                this.showNotification(`Server error: ${error.response.data.message}`, 'error');
+            } else {
+                this.showNotification('Failed to update emergency password - check console for details', 'error');
+            }
         }
     }
     
