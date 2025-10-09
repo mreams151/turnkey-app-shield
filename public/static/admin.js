@@ -5074,11 +5074,26 @@ class AdminPanel {
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200">
                     <div class="p-6 border-b border-gray-200">
                         <h3 class="text-lg font-semibold text-gray-900">Emergency Access Settings</h3>
+                        <p class="text-sm text-gray-600 mt-1">Configure emergency backup password for admin recovery</p>
                     </div>
                     <div class="p-6 space-y-6">
+                        <!-- Security Warning -->
+                        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h4 class="text-sm font-medium text-yellow-800">Security Warning</h4>
+                                    <p class="text-sm text-yellow-700 mt-1">These emergency passwords bypass normal security. Only enable when needed and disable immediately after use.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Emergency Password Form -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
-                            <p class="text-xs text-gray-500 mb-2">Use this as login password to bypass 2FA and access admin panel</p>
+                            <p class="text-xs text-gray-500 mb-3">Use this as login password to bypass 2FA and access admin panel</p>
                             <div class="space-y-3">
                                 <input type="text" id="emergency-login-password" 
                                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -5097,22 +5112,27 @@ class AdminPanel {
                             </div>
                         </div>
 
+                        <!-- How it Works -->
                         <div class="border-t border-gray-200 pt-4">
-                            <h4 class="text-sm font-medium text-gray-700 mb-2">How Emergency Access Works:</h4>
-                            <div class="text-xs text-gray-600 space-y-2">
+                            <h4 class="text-sm font-medium text-gray-700 mb-3">How Emergency Access Works:</h4>
+                            <div class="text-xs text-gray-600 space-y-2 mb-4">
                                 <div><strong>1. Set Password:</strong> Enter and save a strong emergency password</div>
                                 <div><strong>2. Emergency Login:</strong> Use emergency password as login password to bypass 2FA</div>
                                 <div><strong>3. One-Time Use:</strong> Password is automatically deleted after use for security</div>
                                 <div><strong>4. Fix 2FA:</strong> Go to Settings → Disable/Re-enable 2FA with fresh setup</div>
                             </div>
-                            <div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
-                                <div class="text-xs text-orange-700">
-                                    <strong>Security:</strong> Emergency password self-destructs after use. Set a new one immediately after emergency access.
+                            
+                            <!-- Security Notes -->
+                            <div class="space-y-2">
+                                <div class="p-3 bg-orange-50 border border-orange-200 rounded">
+                                    <div class="text-xs text-orange-700">
+                                        <strong>Security:</strong> Emergency password self-destructs after use. Set a new one immediately after emergency access.
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
-                                <div class="text-xs text-gray-600">
-                                    <strong>Fallback:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code>
+                                <div class="p-2 bg-gray-50 border border-gray-200 rounded">
+                                    <div class="text-xs text-gray-600">
+                                        <strong>Fallback:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code>
+                                    </div>
                                 </div>
                             </div>
                         </div>
