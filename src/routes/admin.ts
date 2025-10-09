@@ -4968,8 +4968,15 @@ admin.post('/2fa/setup', authMiddleware, async (c) => {
       }, 400);
     }
     
-    // Generate new TOTP secret using Web Crypto API
-    const secret = WebCryptoTOTP.generateSecret();
+    // Reuse existing TOTP secret if available, otherwise generate new one
+    let secret = currentUser?.totp_secret;
+    if (!secret) {
+      // Only generate new secret if none exists
+      secret = WebCryptoTOTP.generateSecret();
+      console.log('Generated new TOTP secret for user:', adminUser.username);
+    } else {
+      console.log('Reusing existing TOTP secret for user:', adminUser.username);
+    }
     const issuer = 'TurnkeyAppShield';
     
     // Create the authenticator URI
@@ -5172,10 +5179,10 @@ admin.post('/2fa/disable', authMiddleware, async (c) => {
       }
     }
     
-    // Disable 2FA
+    // Disable 2FA (preserve totp_secret for easy re-enabling)
     await db.db.prepare(`
       UPDATE admin_users 
-      SET two_fa_enabled = FALSE, totp_secret = NULL, backup_codes = NULL 
+      SET two_fa_enabled = FALSE, backup_codes = NULL 
       WHERE id = ?
     `).bind(adminUser.id).run();
     

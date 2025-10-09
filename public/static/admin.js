@@ -4916,6 +4916,11 @@ class AdminPanel {
                                 <div id="2fa-disable-confirm" class="twofa-step hidden">
                                     <h3 class="text-lg font-semibold mb-4">Disable Two-Factor Authentication</h3>
                                     <p class="text-gray-600 mb-4">Please confirm your password and 2FA code to disable two-factor authentication.</p>
+                                    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                                        <div class="text-sm text-blue-700">
+                                            <strong>Good news:</strong> Your authenticator app entry will remain valid. If you re-enable 2FA later, you won't need to scan a new QR code!
+                                        </div>
+                                    </div>
                                     <div class="mb-4">
                                         <label class="block text-sm font-medium mb-2">Password:</label>
                                         <input type="password" id="disable-2fa-password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
