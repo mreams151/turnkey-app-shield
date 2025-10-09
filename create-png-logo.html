@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Convert SVG to PNG</title>
+</head>
+<body>
+    <h2>TurnkeyAppShield Logo Generator</h2>
+    <canvas id="canvas" width="128" height="128" style="border: 1px solid #ccc;"></canvas>
+    <br><br>
+    <button onclick="generatePNG()">Generate PNG Logo</button>
+    <br><br>
+    <div id="output"></div>
+    
+    <script>
+        function generatePNG() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, 128, 128);
+            
+            // Create gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 128);
+            gradient.addColorStop(0, '#3b82f6');
+            gradient.addColorStop(1, '#1d4ed8');
+            
+            // Draw shield shape
+            ctx.fillStyle = gradient;
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 3;
+            
+            ctx.beginPath();
+            ctx.moveTo(64, 10);   // top center
+            ctx.lineTo(104, 20);  // top right
+            ctx.lineTo(104, 56);  // middle right
+            ctx.quadraticCurveTo(104, 88, 64, 118); // bottom right curve
+            ctx.quadraticCurveTo(24, 88, 24, 56);   // bottom left curve
+            ctx.lineTo(24, 20);   // top left
+            ctx.closePath();
+            
+            ctx.fill();
+            ctx.stroke();
+            
+            // Draw highlight
+            ctx.strokeStyle = '#60a5fa';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6;
+            
+            ctx.beginPath();
+            ctx.moveTo(64, 13);
+            ctx.lineTo(100, 22);
+            ctx.lineTo(100, 56);
+            ctx.quadraticCurveTo(100, 84, 64, 112);
+            ctx.stroke();
+            
+            ctx.globalAlpha = 1.0;
+            
+            // Draw white arrow
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(64, 30);  // arrow tip
+            ctx.lineTo(52, 42);  // left wing
+            ctx.lineTo(58, 42);  // inner left
+            ctx.lineTo(58, 70);  // left shaft
+            ctx.lineTo(70, 70);  // right shaft
+            ctx.lineTo(70, 42);  // inner right
+            ctx.lineTo(76, 42);  // right wing
+            ctx.closePath();
+            ctx.fill();
+            
+            // Add arrow highlight
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.8;
+            
+            ctx.beginPath();
+            ctx.moveTo(64, 32);
+            ctx.lineTo(56, 42);
+            ctx.lineTo(60, 42);
+            ctx.lineTo(60, 68);
+            ctx.lineTo(68, 68);
+            ctx.lineTo(68, 42);
+            ctx.lineTo(72, 42);
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Generate PNG data URL
+            const pngDataUrl = canvas.toDataURL('image/png');
+            
+            // Display result
+            document.getElementById('output').innerHTML = `
+                <h3>PNG Logo Generated!</h3>
+                <p><strong>Right-click and "Save Image As" to download:</strong></p>
+                <img src="${pngDataUrl}" alt="TurnkeyAppShield Logo" style="border: 1px solid #ccc;">
+                <br><br>
+                <p><strong>Base64 Data URL (for embedding):</strong></p>
+                <textarea rows="5" cols="100">${pngDataUrl}</textarea>
+                <br><br>
+                <button onclick="downloadPNG('${pngDataUrl}')">Download PNG File</button>
+            `;
+        }
+        
+        function downloadPNG(dataUrl) {
+            const link = document.createElement('a');
+            link.download = 'turnkey-logo.png';
+            link.href = dataUrl;
+            link.click();
+        }
+        
+        // Auto-generate on page load
+        window.onload = generatePNG;
+    </script>
+</body>
+</html>
+</script>

@@ -4879,6 +4879,22 @@ class AdminPanel {
                             </label>
                         </div>
                         
+                        <!-- 2FA Management Buttons (shown when 2FA is enabled) -->
+                        <div id="2fa-management" class="hidden mt-4 space-y-3">
+                            <div class="flex space-x-3">
+                                <button id="regenerate-backup-codes-btn" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm">
+                                    <i class="fas fa-redo mr-2"></i>Regenerate Backup Codes
+                                </button>
+                                <button id="reset-2fa-complete-btn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm">
+                                    <i class="fas fa-trash mr-2"></i>Reset 2FA Completely
+                                </button>
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                <div><strong>Regenerate:</strong> Create new backup codes (if you lost yours or want fresh ones)</div>
+                                <div><strong>Reset:</strong> Delete everything and start fresh (requires new QR code scan)</div>
+                            </div>
+                        </div>
+                        
                         <!-- 2FA Setup Modal Container -->
                         <div id="2fa-setup-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                             <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -4890,7 +4906,13 @@ class AdminPanel {
                                     </div>
                                     <div class="mb-4">
                                         <label class="block text-sm font-medium mb-2">Secret Key (Manual Entry):</label>
-                                        <code id="secret-key" class="block p-2 bg-gray-100 rounded text-sm break-all"></code>
+                                        <div class="flex items-center space-x-2">
+                                            <code id="secret-key" class="flex-1 p-2 bg-gray-100 rounded text-sm break-all"></code>
+                                            <button id="copy-secret-key" class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center">
+                                                <i class="fas fa-copy mr-1"></i>Copy
+                                            </button>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">Use this key if you can't scan the QR code</p>
                                     </div>
                                     <div class="mb-4">
                                         <label class="block text-sm font-medium mb-2">Enter 6-digit code from your app:</label>
@@ -4908,7 +4930,10 @@ class AdminPanel {
                                     <div class="bg-gray-50 p-4 rounded mb-4">
                                         <div id="backup-codes-list" class="grid grid-cols-2 gap-2 text-sm font-mono"></div>
                                     </div>
-                                    <div class="flex justify-end">
+                                    <div class="flex justify-between">
+                                        <button id="copy-2fa-backup-codes" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+                                            <i class="fas fa-copy mr-2"></i>Copy All Codes
+                                        </button>
                                         <button id="finish-2fa-setup" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">I've Saved My Codes</button>
                                     </div>
                                 </div>
@@ -4933,6 +4958,50 @@ class AdminPanel {
                                         <button id="cancel-2fa-disable" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
                                         <button id="confirm-2fa-disable" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Disable 2FA</button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Regenerate Backup Codes Modal -->
+                        <div id="regenerate-backup-codes-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                <h3 class="text-lg font-semibold mb-4">Regenerate Backup Codes</h3>
+                                <p class="text-gray-600 mb-4">This will create new backup codes and invalidate your old ones. Make sure to save the new codes in a secure place.</p>
+                                <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                                    <div class="text-sm text-yellow-700">
+                                        <strong>Note:</strong> Your authenticator app will continue working normally.
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium mb-2">Password:</label>
+                                    <input type="password" id="regenerate-backup-password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button id="cancel-regenerate-backup" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                                    <button id="confirm-regenerate-backup" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">Regenerate Codes</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Reset 2FA Complete Modal -->
+                        <div id="reset-2fa-complete-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                <h3 class="text-lg font-semibold mb-4 text-red-600">
+                                    <i class="fas fa-exclamation-triangle mr-2"></i>Reset 2FA Completely
+                                </h3>
+                                <p class="text-gray-600 mb-4">This will completely remove all 2FA data including your authenticator app setup and backup codes. You'll need to scan a new QR code to set up 2FA again.</p>
+                                <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+                                    <div class="text-sm text-red-700">
+                                        <strong>Warning:</strong> Your authenticator app entry will become invalid and must be deleted.
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium mb-2">Password:</label>
+                                    <input type="password" id="reset-2fa-password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button id="cancel-reset-2fa" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                                    <button id="confirm-reset-2fa" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Reset Everything</button>
                                 </div>
                             </div>
                         </div>
@@ -5049,8 +5118,19 @@ class AdminPanel {
             if (response.ok) {
                 const data = await response.json();
                 const toggle = document.getElementById('2fa-toggle');
+                const managementDiv = document.getElementById('2fa-management');
+                
                 if (toggle) {
                     toggle.checked = data.two_fa_enabled;
+                }
+                
+                // Show/hide management buttons based on 2FA status
+                if (managementDiv) {
+                    if (data.two_fa_enabled) {
+                        managementDiv.classList.remove('hidden');
+                    } else {
+                        managementDiv.classList.add('hidden');
+                    }
                 }
             }
         } catch (error) {
@@ -5105,6 +5185,16 @@ class AdminPanel {
             this.finish2FASetup();
         });
         
+        // Copy 2FA backup codes
+        document.getElementById('copy-2fa-backup-codes')?.addEventListener('click', () => {
+            this.copy2FABackupCodes();
+        });
+        
+        // Copy secret key
+        document.getElementById('copy-secret-key')?.addEventListener('click', () => {
+            this.copySecretKey();
+        });
+        
         // Cancel disable
         document.getElementById('cancel-2fa-disable')?.addEventListener('click', () => {
             this.cancel2FADisable();
@@ -5119,6 +5209,46 @@ class AdminPanel {
         document.getElementById('2fa-verification-code')?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.verify2FASetup();
+            }
+        });
+        
+        // New backup codes management handlers
+        document.getElementById('regenerate-backup-codes-btn')?.addEventListener('click', () => {
+            this.showRegenerateBackupCodesModal();
+        });
+        
+        document.getElementById('reset-2fa-complete-btn')?.addEventListener('click', () => {
+            this.showReset2FACompleteModal();
+        });
+        
+        // Regenerate backup codes modal handlers
+        document.getElementById('cancel-regenerate-backup')?.addEventListener('click', () => {
+            this.hideRegenerateBackupCodesModal();
+        });
+        
+        document.getElementById('confirm-regenerate-backup')?.addEventListener('click', () => {
+            this.confirmRegenerateBackupCodes();
+        });
+        
+        // Reset 2FA complete modal handlers  
+        document.getElementById('cancel-reset-2fa')?.addEventListener('click', () => {
+            this.hideReset2FACompleteModal();
+        });
+        
+        document.getElementById('confirm-reset-2fa')?.addEventListener('click', () => {
+            this.confirmReset2FAComplete();
+        });
+        
+        // Enter key handling for password fields
+        document.getElementById('regenerate-backup-password')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.confirmRegenerateBackupCodes();
+            }
+        });
+        
+        document.getElementById('reset-2fa-password')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.confirmReset2FAComplete();
             }
         });
     }
@@ -5500,8 +5630,8 @@ class AdminPanel {
             const data = await response.json();
             
             if (response.ok) {
-                // Show backup codes
-                this.displayBackupCodes(data.backup_codes);
+                // Show backup codes with appropriate message
+                this.displayBackupCodes(data.backup_codes, data.using_existing_codes);
                 this.show2FAStep('2fa-step-2');
             } else {
                 this.showError(data.message || 'Invalid verification code');
@@ -5511,16 +5641,50 @@ class AdminPanel {
         }
     }
     
-    displayBackupCodes(codes) {
+    displayBackupCodes(codes, isUsingExisting = false) {
         const container = document.getElementById('backup-codes-list');
         container.innerHTML = '';
         
-        codes.forEach(code => {
-            const codeDiv = document.createElement('div');
-            codeDiv.className = 'p-2 bg-white rounded border text-center';
-            codeDiv.textContent = code;
-            container.appendChild(codeDiv);
-        });
+        if (isUsingExisting) {
+            // Show message about existing codes
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'col-span-2 p-4 bg-blue-50 border border-blue-200 rounded text-center';
+            messageDiv.innerHTML = `
+                <div class="text-blue-800 font-semibold mb-2">
+                    <i class="fas fa-info-circle mr-2"></i>Your Previous Backup Codes Are Still Valid
+                </div>
+                <div class="text-blue-600 text-sm">
+                    You can continue using the backup codes you previously saved. 
+                    No need to update them unless you want to generate new ones.
+                </div>
+            `;
+            container.appendChild(messageDiv);
+            
+            // Update the step 2 heading and finish button
+            const heading = container.closest('.twofa-step').querySelector('h3');
+            if (heading) {
+                heading.textContent = '2FA Re-enabled Successfully!';
+            }
+            
+            const instructions = container.closest('.twofa-step').querySelector('p');
+            if (instructions) {
+                instructions.textContent = 'Your previous backup codes are still active and can be used for account recovery.';
+            }
+            
+            const finishButton = document.getElementById('finish-2fa-setup');
+            if (finishButton) {
+                finishButton.textContent = 'Continue';
+                finishButton.className = 'px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700';
+            }
+        } else {
+            // Show new backup codes as before
+            codes.forEach(code => {
+                const codeDiv = document.createElement('div');
+                codeDiv.className = 'p-2 bg-white rounded border text-center';
+                codeDiv.textContent = code;
+                container.appendChild(codeDiv);
+            });
+        }
     }
     
     show2FAStep(stepId) {
@@ -5547,6 +5711,10 @@ class AdminPanel {
     
     finish2FASetup() {
         this.hide2FAModal();
+        
+        // Show management buttons since 2FA is now enabled
+        document.getElementById('2fa-management')?.classList.remove('hidden');
+        
         this.showNotification('2FA enabled successfully!', 'success');
     }
     
@@ -5592,6 +5760,10 @@ class AdminPanel {
             
             if (response.ok) {
                 this.hide2FAModal();
+                
+                // Hide management buttons since 2FA is now disabled
+                document.getElementById('2fa-management')?.classList.add('hidden');
+                
                 this.showNotification('2FA disabled successfully', 'success');
             } else {
                 this.showError(data.message || 'Failed to disable 2FA');
@@ -5599,6 +5771,235 @@ class AdminPanel {
         } catch (error) {
             this.showError('Failed to disable 2FA');
         }
+    }
+    
+    // New backup codes management methods
+    showRegenerateBackupCodesModal() {
+        document.getElementById('regenerate-backup-codes-modal').classList.remove('hidden');
+        document.getElementById('regenerate-backup-password').value = '';
+        document.getElementById('regenerate-backup-password').focus();
+    }
+    
+    hideRegenerateBackupCodesModal() {
+        document.getElementById('regenerate-backup-codes-modal').classList.add('hidden');
+        document.getElementById('regenerate-backup-password').value = '';
+    }
+    
+    async confirmRegenerateBackupCodes() {
+        const password = document.getElementById('regenerate-backup-password').value.trim();
+        
+        if (!password) {
+            this.showError('Password is required');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/regenerate-backup-codes`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.hideRegenerateBackupCodesModal();
+                
+                // Show the new backup codes in a special modal
+                this.showNewBackupCodes(data.backup_codes);
+                this.showNotification('New backup codes generated!', 'success');
+            } else {
+                this.showError(data.message || 'Failed to regenerate backup codes');
+            }
+        } catch (error) {
+            this.showError('Failed to regenerate backup codes');
+        }
+    }
+    
+    showReset2FACompleteModal() {
+        document.getElementById('reset-2fa-complete-modal').classList.remove('hidden');
+        document.getElementById('reset-2fa-password').value = '';
+        document.getElementById('reset-2fa-password').focus();
+    }
+    
+    hideReset2FACompleteModal() {
+        document.getElementById('reset-2fa-complete-modal').classList.add('hidden');
+        document.getElementById('reset-2fa-password').value = '';
+    }
+    
+    async confirmReset2FAComplete() {
+        const password = document.getElementById('reset-2fa-password').value.trim();
+        
+        if (!password) {
+            this.showError('Password is required');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/admin/2fa/reset-complete`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.hideReset2FACompleteModal();
+                
+                // Update UI to reflect that 2FA is now disabled
+                document.getElementById('2fa-toggle').checked = false;
+                document.getElementById('2fa-management').classList.add('hidden');
+                
+                this.showNotification('2FA completely reset! You can now set up fresh 2FA.', 'success');
+            } else {
+                this.showError(data.message || 'Failed to reset 2FA');
+            }
+        } catch (error) {
+            this.showError('Failed to reset 2FA');
+        }
+    }
+    
+    copy2FABackupCodes() {
+        try {
+            // Get backup codes from the current modal
+            const backupCodesContainer = document.getElementById('backup-codes-list');
+            const codeElements = backupCodesContainer.querySelectorAll('.p-2');
+            const codes = Array.from(codeElements).map(el => el.textContent.trim());
+            
+            if (codes.length === 0) {
+                this.showError('No backup codes found to copy');
+                return;
+            }
+            
+            const codesText = codes.join('\n');
+            navigator.clipboard.writeText(codesText).then(() => {
+                // Update button to show success
+                const copyBtn = document.getElementById('copy-2fa-backup-codes');
+                const originalContent = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i>Copied!';
+                copyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                copyBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                
+                // Reset button after 2 seconds
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalContent;
+                    copyBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    copyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
+                
+            }).catch(error => {
+                console.error('Failed to copy backup codes:', error);
+                this.showError('Failed to copy codes to clipboard');
+            });
+            
+        } catch (error) {
+            console.error('Error copying backup codes:', error);
+            this.showError('Failed to copy backup codes');
+        }
+    }
+    
+    copySecretKey() {
+        try {
+            const secretKeyElement = document.getElementById('secret-key');
+            const secretKey = secretKeyElement.textContent.trim();
+            
+            if (!secretKey) {
+                this.showError('No secret key found to copy');
+                return;
+            }
+            
+            navigator.clipboard.writeText(secretKey).then(() => {
+                // Update button to show success
+                const copyBtn = document.getElementById('copy-secret-key');
+                const originalContent = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+                copyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                copyBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                
+                // Reset button after 2 seconds
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalContent;
+                    copyBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    copyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
+                
+                // Optional: Show success notification
+                this.showNotification('Secret key copied to clipboard!', 'success');
+                
+            }).catch(error => {
+                console.error('Failed to copy secret key:', error);
+                this.showError('Failed to copy secret key to clipboard');
+            });
+            
+        } catch (error) {
+            console.error('Error copying secret key:', error);
+            this.showError('Failed to copy secret key');
+        }
+    }
+    
+    showNewBackupCodes(codes) {
+        // Create a temporary modal to show new backup codes
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-semibold mb-4 text-green-600">
+                    <i class="fas fa-check-circle mr-2"></i>New Backup Codes Generated
+                </h3>
+                <p class="text-gray-600 mb-4">Save these new backup codes in a secure place. Your old backup codes are no longer valid.</p>
+                <div class="bg-gray-50 p-4 rounded mb-4">
+                    <div class="grid grid-cols-2 gap-2 text-sm font-mono">
+                        ${codes.map(code => `<div class="p-2 bg-white rounded border text-center">${code}</div>`).join('')}
+                    </div>
+                </div>
+                <div class="flex justify-between">
+                    <button id="copy-backup-codes" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+                        <i class="fas fa-copy mr-2"></i>Copy All Codes
+                    </button>
+                    <button id="close-new-codes" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">I've Saved My Codes</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Handle copy to clipboard
+        document.getElementById('copy-backup-codes').addEventListener('click', async () => {
+            try {
+                const codesText = codes.join('\n');
+                await navigator.clipboard.writeText(codesText);
+                
+                // Update button to show success
+                const copyBtn = document.getElementById('copy-backup-codes');
+                const originalContent = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i>Copied!';
+                copyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                copyBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                
+                // Reset button after 2 seconds
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalContent;
+                    copyBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    copyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Failed to copy backup codes:', error);
+                this.showError('Failed to copy codes to clipboard');
+            }
+        });
+        
+        // Handle close
+        document.getElementById('close-new-codes').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
     }
 
     // Utility methods

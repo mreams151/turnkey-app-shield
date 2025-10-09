@@ -1,0 +1,10 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shield Background -->
+  <path d="M32 4L52 12V28C52 44 32 60 32 60C32 60 12 44 12 28V12L32 4Z" fill="#2563eb" stroke="#1e293b" stroke-width="2"/>
+  
+  <!-- Arrow -->
+  <path d="M32 18L42 28L38 28L38 42L26 42L26 28L22 28L32 18Z" fill="#ffffff"/>
+  
+  <!-- Shield Highlight -->
+  <path d="M32 6L50 13V28C50 42.5 32 56 32 56" fill="none" stroke="#60a5fa" stroke-width="1" opacity="0.6"/>
+</svg>

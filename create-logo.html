@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate TurnkeyAppShield Logo</title>
+</head>
+<body>
+    <canvas id="logoCanvas" width="128" height="128" style="border: 1px solid #ccc;"></canvas>
+    <br><br>
+    <button onclick="downloadLogo()">Download PNG Logo</button>
+    
+    <script>
+        const canvas = document.getElementById('logoCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Clear canvas with transparent background
+        ctx.clearRect(0, 0, 128, 128);
+        
+        // Draw shield shape
+        ctx.fillStyle = '#2563eb';
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 3;
+        
+        // Shield path
+        ctx.beginPath();
+        ctx.moveTo(64, 10);  // top center
+        ctx.lineTo(104, 20); // top right
+        ctx.lineTo(104, 56); // middle right
+        ctx.quadraticCurveTo(104, 88, 64, 118); // bottom curve
+        ctx.quadraticCurveTo(24, 88, 24, 56);   // bottom curve left
+        ctx.lineTo(24, 20);  // top left
+        ctx.closePath();
+        
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw arrow
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        
+        // Arrow head (pointing up)
+        ctx.moveTo(64, 30);  // tip
+        ctx.lineTo(52, 42);  // left wing
+        ctx.lineTo(58, 42);  // inner left
+        ctx.lineTo(58, 70);  // left shaft
+        ctx.lineTo(70, 70);  // right shaft
+        ctx.lineTo(70, 42);  // inner right
+        ctx.lineTo(76, 42);  // right wing
+        ctx.closePath();
+        
+        ctx.fill();
+        
+        // Add highlight
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.6;
+        
+        ctx.beginPath();
+        ctx.moveTo(64, 12);
+        ctx.lineTo(100, 22);
+        ctx.lineTo(100, 56);
+        ctx.quadraticCurveTo(100, 84, 64, 112);
+        
+        ctx.stroke();
+        
+        function downloadLogo() {
+            const link = document.createElement('a');
+            link.download = 'turnkey-logo.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        console.log('Logo created! Click download button to save.');
+    </script>
+</body>
+</html>

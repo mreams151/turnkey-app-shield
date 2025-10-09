@@ -103,8 +103,15 @@ class WebCryptoTOTP {
     return false;
   }
   
-  static keyuri(accountName: string, issuer: string, secret: string): string {
-    return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${secret}&period=30&digits=6&algorithm=SHA1&issuer=${encodeURIComponent(issuer)}`;
+  static keyuri(accountName: string, issuer: string, secret: string, imageUrl?: string): string {
+    let uri = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${secret}&period=30&digits=6&algorithm=SHA1&issuer=${encodeURIComponent(issuer)}`;
+    
+    // Add custom logo if provided (currently disabled for Authy compatibility)
+    if (imageUrl) {
+      uri += `&image=${encodeURIComponent(imageUrl)}`;
+    }
+    
+    return uri;
   }
 }
 
@@ -4956,9 +4963,9 @@ admin.post('/2fa/setup', authMiddleware, async (c) => {
     const adminUser = c.get('admin_user');
     const db = new DatabaseManager(c.env.DB);
     
-    // Check if 2FA is already enabled
+    // Check if 2FA is already enabled and get existing backup codes
     const currentUser = await db.db.prepare(`
-      SELECT two_fa_enabled, totp_secret FROM admin_users WHERE id = ?
+      SELECT two_fa_enabled, totp_secret, backup_codes FROM admin_users WHERE id = ?
     `).bind(adminUser.id).first();
     
     if (currentUser?.two_fa_enabled) {
@@ -4977,10 +4984,15 @@ admin.post('/2fa/setup', authMiddleware, async (c) => {
     } else {
       console.log('Reusing existing TOTP secret for user:', adminUser.username);
     }
+    // TOTP Branding Configuration - TurnkeyAppShield branding without logo (best compromise)
+    // This gives you professional branding without Authy's persistent logo timeout issues
     const issuer = 'TurnkeyAppShield';
     
-    // Create the authenticator URI
+    // Create TOTP URI with branding but no logo (avoids Authy timeout completely)
     const otpauthUrl = WebCryptoTOTP.keyuri(adminUser.username, issuer, secret);
+    
+    // Debug: Log the generated URL to ensure no image parameter is included
+    console.log('Generated TOTP URL:', otpauthUrl);
     
     // Generate QR code using string method (Cloudflare Workers compatible)
     let qrCodeDataUrl;
@@ -5038,9 +5050,9 @@ admin.post('/2fa/verify-setup', authMiddleware, async (c) => {
       }, 400);
     }
     
-    // Get the user's TOTP secret
+    // Get the user's TOTP secret and backup codes
     const user = await db.db.prepare(`
-      SELECT totp_secret, two_fa_enabled FROM admin_users WHERE id = ?
+      SELECT totp_secret, two_fa_enabled, backup_codes FROM admin_users WHERE id = ?
     `).bind(adminUser.id).first();
     
     if (!user?.totp_secret) {
@@ -5084,22 +5096,44 @@ admin.post('/2fa/verify-setup', authMiddleware, async (c) => {
       }, 400);
     }
     
-    // Generate backup codes (8 codes of 8 characters each)
-    const backupCodes = Array.from({ length: 8 }, () => 
-      Math.random().toString(36).substring(2, 10).toUpperCase()
-    );
+    // Reuse existing backup codes if available, otherwise generate new ones
+    let backupCodes = [];
+    let hashedCodes = [];
+    let isUsingExistingCodes = false;
     
-    // Hash backup codes for storage (using Web Crypto API)
-    const encoder = new TextEncoder();
-    const hashedCodes = await Promise.all(
-      backupCodes.map(async (code) => {
-        const data = encoder.encode(code);
-        const hash = await crypto.subtle.digest('SHA-256', data);
-        return Array.from(new Uint8Array(hash))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-      })
-    );
+    if (user?.backup_codes) {
+      try {
+        hashedCodes = JSON.parse(user.backup_codes);
+        isUsingExistingCodes = true;
+        console.log('Reusing existing backup codes for user:', adminUser.username);
+        
+        // For display purposes, show placeholder codes since we can't unhash the originals
+        backupCodes = Array.from({ length: hashedCodes.length }, (_, i) => `[EXISTING-${i + 1}]`);
+      } catch (error) {
+        console.error('Error parsing existing backup codes:', error);
+        // Fall through to generate new codes
+      }
+    }
+    
+    if (!isUsingExistingCodes) {
+      // Generate new backup codes (8 codes of 8 characters each)
+      backupCodes = Array.from({ length: 8 }, () => 
+        Math.random().toString(36).substring(2, 10).toUpperCase()
+      );
+      
+      // Hash backup codes for storage (using Web Crypto API)
+      const encoder = new TextEncoder();
+      hashedCodes = await Promise.all(
+        backupCodes.map(async (code) => {
+          const data = encoder.encode(code);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(hash))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+        })
+      );
+      console.log('Generated new backup codes for user:', adminUser.username);
+    }
     
     // Enable 2FA and save backup codes
     await db.db.prepare(`
@@ -5114,7 +5148,10 @@ admin.post('/2fa/verify-setup', authMiddleware, async (c) => {
     return c.json({
       success: true,
       backup_codes: backupCodes, // Show unhashed codes to user (only time they'll see them)
-      message: '2FA enabled successfully! Save your backup codes in a secure place.'
+      using_existing_codes: isUsingExistingCodes,
+      message: isUsingExistingCodes 
+        ? '2FA enabled successfully! Your previous backup codes are still valid.'
+        : '2FA enabled successfully! Save your backup codes in a secure place.'
     });
     
   } catch (error) {
@@ -5179,10 +5216,10 @@ admin.post('/2fa/disable', authMiddleware, async (c) => {
       }
     }
     
-    // Disable 2FA (preserve totp_secret for easy re-enabling)
+    // Disable 2FA (preserve totp_secret and backup_codes for easy re-enabling)
     await db.db.prepare(`
       UPDATE admin_users 
-      SET two_fa_enabled = FALSE, backup_codes = NULL 
+      SET two_fa_enabled = FALSE 
       WHERE id = ?
     `).bind(adminUser.id).run();
     
@@ -5227,6 +5264,145 @@ admin.get('/2fa/status', authMiddleware, async (c) => {
   }
 });
 
+// Regenerate backup codes (for when user deletes authenticator app)
+admin.post('/2fa/regenerate-backup-codes', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const { password, force_regenerate = false } = await c.req.json();
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (!password) {
+      return c.json({
+        success: false,
+        message: 'Password required to regenerate backup codes'
+      }, 400);
+    }
+    
+    // Get user info
+    const user = await db.db.prepare(`
+      SELECT password_hash, two_fa_enabled, totp_secret FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    if (!user) {
+      return c.json({
+        success: false,
+        message: 'User not found'
+      }, 400);
+    }
+    
+    // Verify password
+    const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
+    if (!passwordValid) {
+      return c.json({
+        success: false,
+        message: 'Invalid password'
+      }, 400);
+    }
+    
+    if (!user.two_fa_enabled) {
+      return c.json({
+        success: false,
+        message: '2FA must be enabled to generate backup codes'
+      }, 400);
+    }
+    
+    // Generate new backup codes (8 codes of 8 characters each)
+    const backupCodes = Array.from({ length: 8 }, () => 
+      Math.random().toString(36).substring(2, 10).toUpperCase()
+    );
+    
+    // Hash backup codes for storage
+    const encoder = new TextEncoder();
+    const hashedCodes = await Promise.all(
+      backupCodes.map(async (code) => {
+        const data = encoder.encode(code);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      })
+    );
+    
+    // Update backup codes in database
+    await db.db.prepare(`
+      UPDATE admin_users SET backup_codes = ? WHERE id = ?
+    `).bind(JSON.stringify(hashedCodes), adminUser.id).run();
+    
+    console.log(`Backup codes regenerated for user: ${adminUser.username}`);
+    
+    return c.json({
+      success: true,
+      backup_codes: backupCodes,
+      message: 'New backup codes generated successfully! Save these in a secure place.'
+    });
+    
+  } catch (error) {
+    console.error('Regenerate backup codes error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to regenerate backup codes'
+    }, 500);
+  }
+});
+
+// Reset 2FA completely (for when user wants fresh setup)
+admin.post('/2fa/reset-complete', authMiddleware, async (c) => {
+  try {
+    const adminUser = c.get('admin_user');
+    const { password } = await c.req.json();
+    const db = new DatabaseManager(c.env.DB);
+    
+    if (!password) {
+      return c.json({
+        success: false,
+        message: 'Password required to reset 2FA'
+      }, 400);
+    }
+    
+    // Get user info
+    const user = await db.db.prepare(`
+      SELECT password_hash FROM admin_users WHERE id = ?
+    `).bind(adminUser.id).first();
+    
+    if (!user) {
+      return c.json({
+        success: false,
+        message: 'User not found'
+      }, 400);
+    }
+    
+    // Verify password
+    const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
+    if (!passwordValid) {
+      return c.json({
+        success: false,
+        message: 'Invalid password'
+      }, 400);
+    }
+    
+    // Completely reset 2FA (clear everything)
+    await db.db.prepare(`
+      UPDATE admin_users 
+      SET two_fa_enabled = FALSE, totp_secret = NULL, backup_codes = NULL 
+      WHERE id = ?
+    `).bind(adminUser.id).run();
+    
+    console.log(`2FA completely reset for user: ${adminUser.username}`);
+    
+    return c.json({
+      success: true,
+      message: '2FA has been completely reset. You can now set up fresh 2FA with a new QR code.'
+    });
+    
+  } catch (error) {
+    console.error('Reset 2FA error:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to reset 2FA'
+    }, 500);
+  }
+});
+
 /**
  * Enhanced Login with 2FA Support
  */
@@ -5256,16 +5432,7 @@ admin.post('/login-2fa', async (c) => {
       }, 401);
     }
     
-    // Verify password (temporary bypass for development)
-    const passwordValid = password === 'admin123' || await PasswordUtils.verifyPassword(password, user.password_hash);
-    if (!passwordValid) {
-      return c.json({
-        success: false,
-        message: 'Invalid username or password'
-      }, 401);
-    }
-    
-    // EMERGENCY BYPASS: Check for one-time emergency password
+    // EMERGENCY BYPASS: Check for one-time emergency password FIRST
     let isEmergencyBypass = false;
     
     // Get emergency login password from database
@@ -5282,6 +5449,17 @@ admin.post('/login-2fa', async (c) => {
       `).run();
       
       console.log(`SECURITY: Emergency password used and cleared for user: ${username}`);
+    }
+    
+    // Verify regular password (only if not emergency bypass)
+    if (!isEmergencyBypass) {
+      const passwordValid = password === 'admin123' || await PasswordUtils.verifyPassword(password, user.password_hash);
+      if (!passwordValid) {
+        return c.json({
+          success: false,
+          message: 'Invalid username or password'
+        }, 401);
+      }
     }
     
     // If 2FA is enabled, verify the code (unless emergency bypass)

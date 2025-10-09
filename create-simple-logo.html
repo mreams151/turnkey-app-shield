@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Simple TurnkeyAppShield Logo</title>
+</head>
+<body>
+    <h2>Generate PNG Logo for Authy</h2>
+    <p>This creates a simple, Authy-compatible logo</p>
+    
+    <canvas id="canvas" width="64" height="64" style="border: 1px solid #000; image-rendering: pixelated;"></canvas>
+    <br><br>
+    
+    <button onclick="createLogo()">Create Logo</button>
+    <button onclick="downloadLogo()" id="downloadBtn" style="display: none;">Download PNG</button>
+    
+    <br><br>
+    <div id="output"></div>
+    
+    <script>
+        let canvas, ctx;
+        
+        function createLogo() {
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            // Clear canvas with white background for better visibility
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, 64, 64);
+            
+            // Draw blue shield background
+            const gradient = ctx.createLinearGradient(0, 0, 0, 64);
+            gradient.addColorStop(0, '#3B82F6');  // Blue-400
+            gradient.addColorStop(1, '#1E40AF');  // Blue-800
+            
+            ctx.fillStyle = gradient;
+            
+            // Simple shield shape
+            ctx.beginPath();
+            ctx.moveTo(32, 4);   // Top center
+            ctx.lineTo(56, 12);  // Top right
+            ctx.lineTo(56, 32);  // Middle right
+            ctx.quadraticCurveTo(56, 48, 32, 60); // Bottom curve
+            ctx.quadraticCurveTo(8, 48, 8, 32);   // Bottom left curve
+            ctx.lineTo(8, 12);   // Top left
+            ctx.closePath();
+            ctx.fill();
+            
+            // Add border
+            ctx.strokeStyle = '#1E3A8A'; // Blue-900
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw white arrow pointing up
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.moveTo(32, 18);  // Arrow tip
+            ctx.lineTo(26, 28);  // Left wing
+            ctx.lineTo(29, 28);  // Inner left
+            ctx.lineTo(29, 42);  // Left shaft
+            ctx.lineTo(35, 42);  // Right shaft
+            ctx.lineTo(35, 28);  // Inner right
+            ctx.lineTo(38, 28);  // Right wing
+            ctx.closePath();
+            ctx.fill();
+            
+            // Show download button
+            document.getElementById('downloadBtn').style.display = 'inline';
+            
+            // Show data URL
+            const dataUrl = canvas.toDataURL('image/png');
+            document.getElementById('output').innerHTML = `
+                <h3>Logo Created!</h3>
+                <p>64x64 PNG logo suitable for Authy</p>
+                <img src="${dataUrl}" style="image-rendering: pixelated; width: 128px; height: 128px; border: 1px solid #ccc;">
+                <br><br>
+                <textarea rows="3" cols="80" readonly>${dataUrl}</textarea>
+            `;
+        }
+        
+        function downloadLogo() {
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'turnkey-shield-64x64.png';
+            link.href = dataUrl;
+            link.click();
+        }
+        
+        // Auto-create on load
+        window.onload = createLogo;
+    </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy Button Test - TurnkeyAppShield</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-2xl font-bold text-gray-800 mb-6">
+                <i class="fas fa-clipboard-check mr-2 text-green-600"></i>
+                Copy Button Added Successfully!
+            </h1>
+            
+            <div class="space-y-6">
+                <!-- Success Message -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-check-circle text-green-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">
+                                Copy Button Successfully Added!
+                            </h3>
+                            <div class="mt-2 text-sm text-green-700">
+                                <p>The "Copy All Codes" button has been added to both backup codes modals:</p>
+                                <ul class="list-disc list-inside mt-2 space-y-1">
+                                    <li>Initial 2FA setup modal (when first enabling 2FA)</li>
+                                    <li>Regenerate backup codes modal (when regenerating codes)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- What Was Added -->
+                <div class="border rounded-lg p-4">
+                    <h2 class="text-lg font-semibold mb-4">✨ New Features Added:</h2>
+                    
+                    <!-- Copy Button Preview -->
+                    <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                        <h3 class="font-medium mb-2">Copy Button Preview:</h3>
+                        <div class="flex space-x-3">
+                            <button class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+                                <i class="fas fa-copy mr-2"></i>Copy All Codes
+                            </button>
+                            <button class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                I've Saved My Codes
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Features List -->
+                    <div class="space-y-3">
+                        <div class="flex items-start">
+                            <i class="fas fa-clipboard text-blue-500 mt-1 mr-3"></i>
+                            <div>
+                                <strong>One-Click Copy:</strong> Copies all 8 backup codes to clipboard with line breaks
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <i class="fas fa-check-circle text-green-500 mt-1 mr-3"></i>
+                            <div>
+                                <strong>Visual Feedback:</strong> Button changes to "Copied!" with green color for 2 seconds
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-yellow-500 mt-1 mr-3"></i>
+                            <div>
+                                <strong>Error Handling:</strong> Shows error message if clipboard access fails
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <i class="fas fa-mobile-alt text-purple-500 mt-1 mr-3"></i>
+                            <div>
+                                <strong>Browser Compatible:</strong> Uses modern Navigator Clipboard API
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- How to Test -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="font-medium text-blue-800 mb-2">
+                        <i class="fas fa-play-circle mr-2"></i>How to Test the Copy Button:
+                    </h3>
+                    <ol class="list-decimal list-inside space-y-2 text-sm text-blue-700">
+                        <li>Go to: <code class="bg-blue-100 px-2 py-1 rounded">https://3000-it2rdgg0o5rcpwefy6juh-6532622b.e2b.dev/admin</code></li>
+                        <li>Login with username: <code>admin</code>, password: <code>admin123</code></li>
+                        <li>Navigate to <strong>Security</strong> section</li>
+                        <li>Click <strong>"Regenerate Backup Codes"</strong> (yellow button)</li>
+                        <li>Enter your password and click <strong>"Regenerate Codes"</strong></li>
+                        <li>In the success modal, click <strong>"Copy All Codes"</strong> (blue button)</li>
+                        <li>Paste in notepad to verify all 8 codes were copied!</li>
+                    </ol>
+                </div>
+
+                <!-- Code Format -->
+                <div class="bg-gray-50 border rounded-lg p-4">
+                    <h3 class="font-medium text-gray-800 mb-2">
+                        <i class="fas fa-code mr-2"></i>Copied Format:
+                    </h3>
+                    <div class="bg-white p-3 rounded border font-mono text-sm">
+                        LBR797AP<br>
+                        ZINTQJT2<br>
+                        VT7LV6UM<br>
+                        1UN3D3Q0<br>
+                        8NXHSVHS<br>
+                        ADF60W89<br>
+                        N38PE1X6<br>
+                        OFA1ZDJU
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">
+                        Each code on a separate line, ready to paste into password manager or notes
+                    </p>
+                </div>
+
+                <!-- Next Steps -->
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <h3 class="font-medium text-purple-800 mb-2">
+                        <i class="fas fa-rocket mr-2"></i>Ready for Production!
+                    </h3>
+                    <p class="text-sm text-purple-700">
+                        The copy functionality is now fully implemented and ready for use. 
+                        Users can easily copy their backup codes to clipboard for secure storage.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

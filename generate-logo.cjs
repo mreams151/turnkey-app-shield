@@ -1,0 +1,57 @@
+// Simple script to create a base64 PNG logo for TurnkeyAppShield
+// This creates a shield with arrow design similar to the provided image
+
+const fs = require('fs');
+
+// Create a simple SVG that we can convert to base64
+const svgLogo = `
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Shield background -->
+  <path d="M64 10 L104 20 L104 56 Q104 88 64 118 Q24 88 24 56 L24 20 Z" 
+        fill="url(#shieldGradient)" 
+        stroke="#1e293b" 
+        stroke-width="3"/>
+  
+  <!-- Shield highlight -->
+  <path d="M64 13 L100 22 L100 56 Q100 84 64 112" 
+        fill="none" 
+        stroke="#60a5fa" 
+        stroke-width="2" 
+        opacity="0.6"/>
+  
+  <!-- Arrow pointing up -->
+  <path d="M64 30 L52 42 L58 42 L58 70 L70 70 L70 42 L76 42 Z" 
+        fill="#ffffff"/>
+        
+  <!-- Arrow highlight -->
+  <path d="M64 32 L56 42 L60 42 L60 68 L68 68 L68 42 L72 42 Z" 
+        fill="none" 
+        stroke="#e5e7eb" 
+        stroke-width="1" 
+        opacity="0.8"/>
+</svg>`;
+
+// Convert SVG to base64
+const base64Logo = Buffer.from(svgLogo).toString('base64');
+const dataUrl = `data:image/svg+xml;base64,${base64Logo}`;
+
+console.log('TurnkeyAppShield Logo Created!');
+console.log('='.repeat(50));
+console.log('Base64 SVG Data URL:');
+console.log(dataUrl);
+console.log('\n' + '='.repeat(50));
+
+// Save to file for easy access
+fs.writeFileSync('/home/user/turnkey-app-shield/public/static/logo-base64.txt', dataUrl);
+console.log('Logo saved to: public/static/logo-base64.txt');
+
+// Also save the SVG
+fs.writeFileSync('/home/user/turnkey-app-shield/public/static/turnkey-logo-v2.svg', svgLogo);
+console.log('SVG saved to: public/static/turnkey-logo-v2.svg');
