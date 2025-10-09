@@ -14,6 +14,13 @@
 - **API Documentation**: https://705eedc4.turnkey-app-shield.pages.dev/api/info
 - **Health Check**: https://705eedc4.turnkey-app-shield.pages.dev/api/health
 
+### **🔑 PASSWORD CHANGE FUNCTIONALITY ADDED (2025-10-09)**:
+✅ **SECURE PASSWORD CHANGE**: Complete password change functionality in Security Settings  
+✅ **VALIDATION & VERIFICATION**: Current password verification, confirmation matching, minimum length requirements  
+✅ **PROFESSIONAL UI**: Integrated seamlessly into admin panel with real-time status feedback  
+✅ **SECURITY BEST PRACTICES**: JWT authentication required, secure password hashing with salt  
+✅ **USER EXPERIENCE**: Enter key support, loading states, auto-clear forms, comprehensive error messages
+
 ### **🛡️ 2FA SECURITY SYSTEM COMPLETED (2025-10-09)**:
 ✅ **COMPLETE 2FA IMPLEMENTATION**: Full TOTP-based two-factor authentication system with backup codes
 ✅ **AUTHY COMPATIBILITY RESOLVED**: Fixed logo timeout issues - system works reliably with "Admin Panel" branding
@@ -138,6 +145,7 @@
 
 #### Administration:
 - `POST /api/admin/auth/login` - Admin authentication
+- `POST /api/admin/auth/change-password` - Change admin password (requires current password)
 - `GET /api/admin/dashboard` - Dashboard with statistics
 - `GET /api/admin/customers` - Customer management
 - `GET /api/admin/products` - Product management
