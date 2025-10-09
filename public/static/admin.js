@@ -5034,127 +5034,90 @@ class AdminPanel {
                             </div>
                         </div>
                         
-                        <!-- Password Management Sections - Side by Side -->
-                        <div class="border-t border-gray-200 pt-6">
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                
-                                <!-- Change Password Section -->
-                                <div class="bg-white border border-gray-200 rounded-lg p-6">
-                                    <h4 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                                        <i class="fas fa-key mr-3 text-blue-600"></i>Change Password
-                                    </h4>
-                                    <p class="text-sm text-gray-600 mb-6">Update your login password for enhanced security</p>
-                                    
-                                    <div class="space-y-4">
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
-                                            <input type="password" id="current-password" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="Enter current password">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">New Password</label>
-                                            <input type="password" id="new-password" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="Enter new password (min 6 characters)">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
-                                            <input type="password" id="confirm-new-password" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="Confirm new password">
-                                        </div>
-                                        <div class="pt-2">
-                                            <button id="change-password-btn" class="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                                                <i class="fas fa-save mr-2"></i>Change Password
-                                            </button>
-                                            <div id="password-change-status" class="hidden text-sm mt-2 text-center"></div>
-                                        </div>
-                                    </div>
-                                </div>
+                    </div>
+                </div>
 
-                                <!-- Emergency Access Section -->
-                                <div class="bg-white border border-gray-200 rounded-lg p-6">
-                                    <h4 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                                        <i class="fas fa-exclamation-triangle mr-3 text-orange-600"></i>Emergency Access
-                                    </h4>
-                                    <p class="text-sm text-gray-600 mb-6">Set a backup password to bypass 2FA if needed</p>
-                                    
-                                    <div class="space-y-4">
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
-                                            <div class="space-y-3">
-                                                <input type="text" id="emergency-login-password" 
-                                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                                    placeholder="Enter emergency password">
-                                                <div class="flex space-x-2">
-                                                    <button id="update-login-password" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors">
-                                                        <i class="fas fa-shield-alt mr-2"></i>Set Emergency Password
-                                                    </button>
-                                                    <button id="remove-emergency-password" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors">
-                                                        <i class="fas fa-times mr-2"></i>Remove
-                                                    </button>
-                                                </div>
-                                                <div id="emergency-status" class="text-sm font-medium text-center">
-                                                    Loading status...
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                <!-- Change Password Section -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="p-6 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900">Change Password</h3>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
+                            <input type="password" id="current-password" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Enter current password">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+                            <input type="password" id="new-password" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Enter new password (min 6 characters)">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
+                            <input type="password" id="confirm-new-password" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Confirm new password">
+                        </div>
+                        <div>
+                            <button id="change-password-btn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                <i class="fas fa-save mr-2"></i>Change Password
+                            </button>
+                            <div id="password-change-status" class="hidden text-sm mt-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Access Settings -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="p-6 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900">Emergency Access Settings</h3>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Emergency Login Password</label>
+                            <p class="text-xs text-gray-500 mb-2">Use this as login password to bypass 2FA and access admin panel</p>
+                            <div class="space-y-3">
+                                <input type="text" id="emergency-login-password" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter emergency password">
+                                <div class="flex space-x-2">
+                                    <button id="update-login-password" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                        Set Password
+                                    </button>
+                                    <button id="remove-emergency-password" class="px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">
+                                        Remove Password
+                                    </button>
                                 </div>
-                                
+                                <div id="emergency-status" class="text-sm font-medium text-orange-600">
+                                    Loading status...
+                                </div>
                             </div>
                         </div>
-                        
-                        <!-- Security Information Section -->
-                        <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-                            <h4 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                                <i class="fas fa-info-circle mr-3 text-blue-600"></i>Security Information
-                            </h4>
-                            
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <!-- Password Change Info -->
-                                <div>
-                                    <h5 class="font-medium text-gray-800 mb-2">Password Management</h5>
-                                    <div class="text-sm text-gray-600 space-y-2">
-                                        <div><strong>Security:</strong> Always use strong passwords with letters, numbers, and symbols</div>
-                                        <div><strong>Frequency:</strong> Change passwords regularly for better security</div>
-                                        <div><strong>Verification:</strong> Must provide current password to make changes</div>
-                                        <div><strong>Session:</strong> Your login session remains active after password change</div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Emergency Access Info -->
-                                <div>
-                                    <h5 class="font-medium text-gray-800 mb-2">Emergency Access Guide</h5>
-                                    <div class="text-sm text-gray-600 space-y-2">
-                                        <div><strong>1. Set Password:</strong> Enter and save a strong emergency password</div>
-                                        <div><strong>2. Emergency Login:</strong> Use emergency password as login password to bypass 2FA</div>
-                                        <div><strong>3. One-Time Use:</strong> Password is automatically deleted after use for security</div>
-                                        <div><strong>4. Fix 2FA:</strong> Go to Settings → Disable/Re-enable 2FA with fresh setup</div>
-                                    </div>
+
+                        <div class="border-t border-gray-200 pt-4">
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">How Emergency Access Works:</h4>
+                            <div class="text-xs text-gray-600 space-y-2">
+                                <div><strong>1. Set Password:</strong> Enter and save a strong emergency password</div>
+                                <div><strong>2. Emergency Login:</strong> Use emergency password as login password to bypass 2FA</div>
+                                <div><strong>3. One-Time Use:</strong> Password is automatically deleted after use for security</div>
+                                <div><strong>4. Fix 2FA:</strong> Go to Settings → Disable/Re-enable 2FA with fresh setup</div>
+                            </div>
+                            <div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
+                                <div class="text-xs text-orange-700">
+                                    <strong>Security:</strong> Emergency password self-destructs after use. Set a new one immediately after emergency access.
                                 </div>
                             </div>
-                            
-                            <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <div class="p-3 bg-green-50 border border-green-200 rounded">
-                                    <div class="text-sm text-green-700">
-                                        <strong>Password Security:</strong> Your password is hashed and salted before storage. Current sessions remain active after password changes.
-                                    </div>
-                                </div>
-                                <div class="p-3 bg-orange-50 border border-orange-200 rounded">
-                                    <div class="text-sm text-orange-700">
-                                        <strong>Emergency Security:</strong> Emergency passwords self-destruct after use. Set a new one immediately after emergency access.
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="mt-4 p-3 bg-gray-50 border border-gray-200 rounded">
+                            <div class="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
                                 <div class="text-xs text-gray-600">
-                                    <strong>Technical Fallback:</strong> <code>npx wrangler d1 execute turnkey-app-shield-production --local --command="UPDATE admin_users SET two_fa_enabled = FALSE"</code>
+                                    <strong>Fallback:</strong> <code>npx wrangler d1 execute ... UPDATE admin_users SET two_fa_enabled = 0</code>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
                     </div>
                 </div>
             </div>
