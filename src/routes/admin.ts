@@ -454,15 +454,14 @@ admin.post('/auth/change-password', authMiddleware, async (c) => {
     }
 
     // Hash new password
-    const salt = await PasswordUtils.generateSalt();
-    const hashedNewPassword = await PasswordUtils.hashPassword(newPassword, salt);
+    const hashedNewPassword = await PasswordUtils.hashPassword(newPassword);
 
     // Update password in database
     await c.env.DB.prepare(`
       UPDATE admin_users 
-      SET password_hash = ?, salt = ?, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).bind(hashedNewPassword, salt, adminUser.id).run();
+    `).bind(hashedNewPassword, adminUser.id).run();
 
     return c.json({
       success: true,
