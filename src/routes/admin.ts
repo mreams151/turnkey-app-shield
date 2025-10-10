@@ -335,8 +335,8 @@ admin.post('/auth/login', async (c) => {
       }, 423);
     }
 
-    // Verify password (temporary bypass for testing)
-    const isValidPassword = password === 'newadmin123' || await PasswordUtils.verifyPassword(password, admin.password_hash);
+    // Verify password
+    const isValidPassword = await PasswordUtils.verifyPassword(password, admin.password_hash);
     
     const clientIP = c.req.header('cf-connecting-ip') || 'unknown';
     
@@ -442,8 +442,8 @@ admin.post('/auth/change-password', authMiddleware, async (c) => {
       }, 404);
     }
 
-    // Verify current password (temporary bypass for testing)
-    const isCurrentPasswordValid = currentPassword === 'newadmin123' || await PasswordUtils.verifyPassword(currentPassword, adminUser.password_hash);
+    // Verify current password
+    const isCurrentPasswordValid = await PasswordUtils.verifyPassword(currentPassword, adminUser.password_hash);
 
     if (!isCurrentPasswordValid) {
       return c.json({
@@ -5535,7 +5535,7 @@ admin.post('/login-2fa', async (c) => {
     
     // Verify regular password (only if not emergency bypass)
     if (!isEmergencyBypass) {
-      const passwordValid = password === 'newadmin123' || await PasswordUtils.verifyPassword(password, user.password_hash);
+      const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
       if (!passwordValid) {
         return c.json({
           success: false,
