@@ -336,7 +336,7 @@ admin.post('/auth/login', async (c) => {
     }
 
     // Verify password
-    const isValidPassword = password === 'tempaccess789' || await PasswordUtils.verifyPassword(password, admin.password_hash);
+    const isValidPassword = await PasswordUtils.verifyPassword(password, admin.password_hash);
     
     const clientIP = c.req.header('cf-connecting-ip') || 'unknown';
     
@@ -5535,7 +5535,7 @@ admin.post('/login-2fa', async (c) => {
     
     // Verify regular password (only if not emergency bypass)
     if (!isEmergencyBypass) {
-      const passwordValid = password === 'tempaccess789' || await PasswordUtils.verifyPassword(password, user.password_hash);
+      const passwordValid = await PasswordUtils.verifyPassword(password, user.password_hash);
       if (!passwordValid) {
         return c.json({
           success: false,
