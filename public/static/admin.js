@@ -5499,6 +5499,7 @@ class AdminPanel {
             });
 
             if (response.data.success) {
+                console.log('Password change successful, showing message');
                 this.showPasswordChangeStatus('Password changed successfully!', 'success');
                 
                 // Clear form fields
@@ -5508,9 +5509,13 @@ class AdminPanel {
 
                 // Show success message for 3 seconds
                 setTimeout(() => {
-                    statusDiv.classList.add('hidden');
+                    const statusDiv = document.getElementById('password-change-status');
+                    if (statusDiv) {
+                        statusDiv.classList.add('hidden');
+                    }
                 }, 3000);
             } else {
+                console.log('Password change failed:', response.data.message);
                 this.showPasswordChangeStatus(response.data.message || 'Failed to change password', 'error');
             }
 
@@ -5526,11 +5531,16 @@ class AdminPanel {
     }
 
     showPasswordChangeStatus(message, type) {
+        console.log('showPasswordChangeStatus called with:', message, type);
         const statusDiv = document.getElementById('password-change-status');
+        console.log('Status div found:', !!statusDiv);
         if (statusDiv) {
-            statusDiv.className = `text-sm ${type === 'success' ? 'text-green-600' : 'text-red-600'}`;
+            statusDiv.className = `text-sm mt-2 ${type === 'success' ? 'text-green-600' : 'text-red-600'}`;
             statusDiv.textContent = message;
             statusDiv.classList.remove('hidden');
+            console.log('Status message displayed:', message);
+        } else {
+            console.error('password-change-status element not found!');
         }
     }
 
